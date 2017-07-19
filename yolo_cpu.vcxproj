@@ -123,18 +123,12 @@
   <ItemGroup>
     <ClCompile Include="src\additionally.c" />
     <ClCompile Include="src\box.c" />
-    <ClCompile Include="src\image.c" />
     <ClCompile Include="src\main.c" />
-    <ClCompile Include="src\option_list.c" />
-    <ClCompile Include="src\parser.c" />
     <ClCompile Include="src\yolov2_forward_network.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\additionally.h" />
     <ClInclude Include="src\box.h" />
-    <ClInclude Include="src\image.h" />
-    <ClInclude Include="src\option_list.h" />
-    <ClInclude Include="src\parser.h" />
     <ClInclude Include="src\stb_image.h" />
     <ClInclude Include="src\stb_image_write.h" />
   </ItemGroup>

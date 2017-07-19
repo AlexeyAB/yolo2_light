@@ -2,10 +2,10 @@
 #include <stdlib.h>
 
 
-#include "option_list.h"
-#include "parser.h"
-#include "image.h"
+#include "box.h"
 #include "pthread.h"
+
+#include "additionally.h"
 
 #ifdef OPENCV
 #pragma comment(lib, "opencv_core249.lib")
@@ -20,7 +20,7 @@
 // get prediction boxes: yolov2_forward_network.c
 void get_region_boxes_cpu(layer l, int w, int h, float thresh, float **probs, box *boxes, int only_objectness, int *map);
 
-
+// draw detection without OpenCV
 void draw_detections_cpu(image im, int num, float thresh, box *boxes, float **probs, char **names, image **alphabet, int classes)
 {
 	int i;
@@ -32,7 +32,7 @@ void draw_detections_cpu(image im, int num, float thresh, box *boxes, float **pr
 
 			int width = im.h * .012;
 
-			printf("%s: %.0f%%\n", names[class], prob * 100);
+			//printf("%s: %.0f%%\n", names[class], prob * 100);
 			int offset = class * 123457 % classes;
 			float red = get_color(2, offset, classes);
 			float green = get_color(1, offset, classes);
@@ -51,16 +51,19 @@ void draw_detections_cpu(image im, int num, float thresh, box *boxes, float **pr
 			int top = (b.y - b.h / 2.)*im.h;
 			int bot = (b.y + b.h / 2.)*im.h;
 
+			printf("%s: %.0f%% \t x_center = %d, y_center = %d, width = %d, height = %d \n", 
+				names[class], prob * 100, (int)(b.x*im.w), (int)(b.y*im.h), (int)(b.w*im.w), (int)(b.h*im.h));
+
 			if (left < 0) left = 0;
 			if (right > im.w - 1) right = im.w - 1;
 			if (top < 0) top = 0;
 			if (bot > im.h - 1) bot = im.h - 1;
 
 			draw_box_width(im, left, top, right, bot, width, red, green, blue);
-			if (alphabet) {
-				image label = get_label(alphabet, names[class], (im.h*.03) / 10);
-				draw_label(im, top + width, left, label, rgb);
-			}
+			//if (alphabet) {
+				//image label = get_label(alphabet, names[class], (im.h*.03) / 10);
+				//draw_label(im, top + width, left, label, rgb);
+			//}
 		}
 	}
 }
@@ -75,16 +78,14 @@ float *network_predict_cpu(network net, float *input);
 float *network_predict_gpu_cudnn(network net, float *input);
 
 // Detect on Image: this function uses other functions not from this file
-void test_detector_cpu(char *datacfg, char *cfgfile, char *weightfile, char *filename, float thresh)
+void test_detector_cpu(char **names, char *cfgfile, char *weightfile, char *filename, float thresh)
 {
-	list *options = read_data_cfg(datacfg);		// option_list.c
-	char *name_list = option_find_str(options, "names", "data/names.list");	// option_list.c
-	char **names = get_labels(name_list);		// data.c
-
-	image **alphabet = load_alphabet();			// image.c
+	//image **alphabet = load_alphabet();			// image.c
+	image **alphabet = NULL;
 	network net = parse_network_cfg(cfgfile);	// parser.c
 	if (weightfile) {
-		load_weights(&net, weightfile);			// parser.c
+		//load_weights(&net, weightfile);			// parser.c
+		load_weights_upto_cpu(&net, weightfile, net.n);
 	}
 	set_batch_network(&net, 1);					// network.c
 	srand(2222222);
@@ -104,7 +105,7 @@ void test_detector_cpu(char *datacfg, char *cfgfile, char *weightfile, char *fil
 			if (!input) return;
 			strtok(input, "\n");
 		}
-		image im = load_image_color(input, 0, 0);		// image.c
+		image im = load_image(input, 0, 0, 3);			// image.c
 		image sized = resize_image(im, net.w, net.h);	// image.c
 		layer l = net.layers[net.n - 1];
 
@@ -126,8 +127,8 @@ void test_detector_cpu(char *datacfg, char *cfgfile, char *weightfile, char *fil
 																			//  nms (non maximum suppression) - if (IoU(box[i], box[j]) > nms) then remove one of two boxes with lower probability
 		if (nms) do_nms_sort(boxes, probs, l.w*l.h*l.n, l.classes, nms);	// box.c
 		draw_detections_cpu(im, l.w*l.h*l.n, thresh, boxes, probs, names, alphabet, l.classes);	// draw_detections(): image.c
-		save_image(im, "predictions");	// image.c
-		show_image(im, "predictions");	// image.c
+		save_image_png(im, "predictions");	// image.c
+		show_image(im, "predictions");		// image.c
 
 		free_image(im);					// image.c
 		free_image(sized);				// image.c
@@ -160,7 +161,6 @@ static CvCapture * cap;
 static float fps = 0;
 static float demo_thresh = 0;
 
-image get_image_from_stream_resize(CvCapture *cap, int w, int h, IplImage** in_img);	// image.c
 IplImage* in_img;
 IplImage* det_img;
 IplImage* show_img;
@@ -235,9 +235,25 @@ void draw_detections_cv_cpu(IplImage* show_img, int num, float thresh, box *boxe
 	}
 }
 
+
+
+image get_image_from_stream_resize_cpu(CvCapture *cap, int w, int h, IplImage** in_img)
+{
+	IplImage* src = cvQueryFrame(cap);
+	if (!src) return make_empty_image(0, 0, 0);
+	IplImage* new_img = cvCreateImage(cvSize(w, h), IPL_DEPTH_8U, 3);
+	*in_img = cvCreateImage(cvSize(src->width, src->height), IPL_DEPTH_8U, 3);
+	cvResize(src, *in_img, CV_INTER_LINEAR);
+	cvResize(src, new_img, CV_INTER_LINEAR);
+	image im = ipl_to_image(new_img);
+	cvReleaseImage(&new_img);
+	rgbgr_image(im);
+	return im;
+}
+
 static void *fetch_in_thread(void *ptr)
 {
-	in = get_image_from_stream_resize(cap, net.w, net.h, &in_img);	// image.c
+	in = get_image_from_stream_resize_cpu(cap, net.w, net.h, &in_img);	// image.c
 	if (!in.data) {
 		error("Stream closed.");
 	}
@@ -293,7 +309,8 @@ void demo_cpu(char *cfgfile, char *weightfile, float thresh, int cam_index, cons
 	printf("Demo\n");
 	net = parse_network_cfg(cfgfile);
 	if (weightfile) {
-		load_weights(&net, weightfile);
+		//load_weights(&net, weightfile);			// parser.c
+		load_weights_upto_cpu(&net, weightfile, net.n);
 	}
 	set_batch_network(&net, 1);
 
@@ -354,7 +371,7 @@ void demo_cpu(char *cfgfile, char *weightfile, float thresh, int cam_index, cons
 		else {
 			char buff[256];
 			sprintf(buff, "%s_%08d", prefix, count);
-			save_image(disp, buff);
+			save_image_png(disp, buff);
 		}
 
 		pthread_join(fetch_thread, 0);
@@ -388,9 +405,7 @@ void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const ch
 #endif
 
 
-
-
-
+// get command line parameters and load objects names
 void run_detector(int argc, char **argv)
 {
 	char *prefix = find_char_arg(argc, argv, "-prefix", 0);
@@ -398,28 +413,43 @@ void run_detector(int argc, char **argv)
 	int cam_index = find_int_arg(argc, argv, "-c", 0);
 	int frame_skip = find_int_arg(argc, argv, "-s", 0);
 	if (argc < 4) {
-		fprintf(stderr, "usage: %s %s [train/test/valid] [cfg] [weights (optional)]\n", argv[0], argv[1]);
+		fprintf(stderr, "usage: %s %s [demo/test/] [cfg] [weights (optional)]\n", argv[0], argv[1]);
 		return;
 	}
 
-	int clear = find_arg(argc, argv, "-clear");
+	int clear = 0;				// find_arg(argc, argv, "-clear");
 
-	char *datacfg = argv[3];
+	char *obj_names = argv[3];	// char *datacfg = argv[3];
 	char *cfg = argv[4];
 	char *weights = (argc > 5) ? argv[5] : 0;
 	char *filename = (argc > 6) ? argv[6] : 0;
-	if (0 == strcmp(argv[2], "test")) test_detector_cpu(datacfg, cfg, weights, filename, thresh);
+
+	// load object names
+	char **names = calloc(10000, sizeof(char *));
+	int obj_count = 0;
+	FILE* fp;
+	char buffer[255];
+	fp = fopen(obj_names, "r");
+	while (fgets(buffer, 255, (FILE*)fp)) {
+		names[obj_count] = calloc(strlen(buffer), sizeof(char));
+		strcpy(names[obj_count], buffer);
+		names[obj_count][strlen(buffer)-1] = 0;
+		++obj_count;
+	}
+	fclose(fp);
+	int classes = obj_count;
+
+	if (0 == strcmp(argv[2], "test")) test_detector_cpu(names, cfg, weights, filename, thresh);
 	//else if (0 == strcmp(argv[2], "train")) train_detector(datacfg, cfg, weights, gpus, ngpus, clear);
 	//else if (0 == strcmp(argv[2], "valid")) validate_detector(datacfg, cfg, weights);
 	//else if (0 == strcmp(argv[2], "recall")) validate_detector_recall(datacfg, cfg, weights);
 	else if (0 == strcmp(argv[2], "demo")) {
-		list *options = read_data_cfg(datacfg);
-		int classes = option_find_int(options, "classes", 20);
-		char *name_list = option_find_str(options, "names", "data/names.list");
-		char **names = get_labels(name_list);
 		demo_cpu(cfg, weights, thresh, cam_index, filename, names, classes, frame_skip, prefix);
 	}
 
+	int i;
+	for (i = 0; i < obj_count; ++i) free(names[i]);
+	free(names);
 }
 
 
@@ -429,10 +459,7 @@ int main(int argc, char **argv)
 		fprintf(stderr, "usage: %s <function>\n", argv[0]);
 		return 0;
 	}
-	gpu_index = find_int_arg(argc, argv, "-i", 0);
-	if (find_arg(argc, argv, "-nogpu")) {
-		gpu_index = -1;
-	}
+	gpu_index = 0;
 
 #ifndef GPU
 	gpu_index = -1;

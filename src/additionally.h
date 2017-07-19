@@ -24,6 +24,10 @@ extern "C" {
 #include "cublas_v2.h"
 #endif
 
+#ifdef OPENCV
+#include "opencv2/highgui/highgui_c.h"
+#include "opencv2/imgproc/imgproc_c.h"
+#endif
 
 extern int gpu_index;
 
@@ -577,6 +581,74 @@ maxpool_layer make_maxpool_layer(int batch, int h, int w, int c, int size, int s
 // convolutional_layer.c
 convolutional_layer make_convolutional_layer(int batch, int h, int w, int c, int n, int size, int stride, int padding, ACTIVATION activation, int batch_normalize, int binary, int xnor, int adam);
 
+
+
+// -------------- image.c --------------
+
+// image.c
+typedef struct {
+	int h;
+	int w;
+	int c;
+	float *data;
+} image;
+
+// image.c
+void rgbgr_image(image im);
+
+// image.c
+image make_empty_image(int w, int h, int c);
+
+// image.c
+void free_image(image m);
+
+// image.c
+void draw_box(image a, int x1, int y1, int x2, int y2, float r, float g, float b);
+
+// image.c
+void draw_box_width(image a, int x1, int y1, int x2, int y2, int w, float r, float g, float b);
+
+// image.c
+image make_image(int w, int h, int c);
+
+// image.c
+float get_pixel(image m, int x, int y, int c);
+
+// image.c
+void set_pixel(image m, int x, int y, int c, float val);
+
+// image.c
+image resize_image(image im, int w, int h);
+
+// image.c
+image load_image(char *filename, int w, int h, int c);
+
+// image.c
+image load_image_stb(char *filename, int channels);
+
+#ifdef OPENCV
+// image.c
+image ipl_to_image(IplImage* src);
+#endif
+
+// image.c
+image load_image_cv(char *filename, int channels);
+
+// image.c
+float get_color(int c, int x, int max);
+
+// image.c
+void save_image_png(image im, const char *name);
+
+// image.c
+void show_image(image p, const char *name);
+
+// -------------- parser.c --------------------
+
+// parser.c
+network parse_network_cfg(char *filename);
+
+// -------------- gettimeofday for Windows--------------------
 
 #if defined(_MSC_VER) 
 #include < time.h >
