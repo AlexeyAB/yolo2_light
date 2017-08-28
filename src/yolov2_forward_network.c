@@ -195,8 +195,9 @@ void forward_reorg_layer_cpu(const layer l, network_state state)
 	int c = l.c;
 	int batch = l.batch;
 	
+	int stride = l.stride;
 	int b, i, j, k;
-	int out_c = c;
+	int out_c = c / (stride*stride);
 
 	// batch index
 	for (b = 0; b < batch; ++b) {
@@ -204,14 +205,14 @@ void forward_reorg_layer_cpu(const layer l, network_state state)
 		for (k = 0; k < c; ++k) {
 			// y
 			for (j = 0; j < h; ++j) {
-				// x 
+				// x
 				for (i = 0; i < w; ++i) {
 					int in_index = i + w*(j + h*(k + c*b));
 					int c2 = k % out_c;
 					int offset = k / out_c;
-					int w2 = i;
-					int h2 = j + offset;
-					int out_index = w2 + w*(h2 + h*(c2 + out_c*b));
+					int w2 = i*stride + offset % stride;
+					int h2 = j*stride + offset / stride;
+					int out_index = w2 + w*stride*(h2 + h*stride*(c2 + out_c*b));
 					out[in_index] = x[out_index];
 				}
 			}

@@ -648,6 +648,9 @@ void show_image(image p, const char *name);
 // parser.c
 network parse_network_cfg(char *filename);
 
+// parser.c
+void load_weights_upto_cpu(network *net, char *filename, int cutoff);
+
 // -------------- gettimeofday for Windows--------------------
 
 #if defined(_MSC_VER) 

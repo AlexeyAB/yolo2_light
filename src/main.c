@@ -17,6 +17,13 @@
 #endif
 
 
+
+// detect on CPU: yolov2_forward_network.c
+float *network_predict_cpu(network net, float *input);
+
+// detect on GPU: yolov2_forward_network_gpu.cu
+float *network_predict_gpu_cudnn(network net, float *input);
+
 // get prediction boxes: yolov2_forward_network.c
 void get_region_boxes_cpu(layer l, int w, int h, float thresh, float **probs, box *boxes, int only_objectness, int *map);
 
@@ -71,11 +78,6 @@ void draw_detections_cpu(image im, int num, float thresh, box *boxes, float **pr
 
 // --------------- Detect on the Image ---------------
 
-// detect on CPU: yolov2_forward_network.c
-float *network_predict_cpu(network net, float *input);
-
-// detect on GPU: yolov2_forward_network_gpu.cu
-float *network_predict_gpu_cudnn(network net, float *input);
 
 // Detect on Image: this function uses other functions not from this file
 void test_detector_cpu(char **names, char *cfgfile, char *weightfile, char *filename, float thresh)
