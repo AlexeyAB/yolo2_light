@@ -120,7 +120,7 @@ char *fgetl(FILE *fp)
 			size *= 2;
 			line = realloc(line, size * sizeof(char));
 			if (!line) {
-				printf("%ld\n", size);
+				printf("%ld\n", (int long)size);
 				malloc_error();
 			}
 		}
@@ -299,7 +299,7 @@ float dist_array(float *a, float *b, int n, int sub)
 {
 	int i;
 	float sum = 0;
-	for (i = 0; i < n; i += sub) sum += pow(a[i] - b[i], 2);
+	for (i = 0; i < n; i += sub) sum += powf(a[i] - b[i], 2);
 	return sqrt(sum);
 }
 
@@ -1474,34 +1474,6 @@ typedef struct {
 	int used;
 } kvp;
 
-// option_list.c
-list *read_data_cfg(char *filename)
-{
-	FILE *file = fopen(filename, "r");
-	if (file == 0) file_error(filename);
-	char *line;
-	int nu = 0;
-	list *options = make_list();
-	while ((line = fgetl(file)) != 0) {
-		++nu;
-		strip(line);
-		switch (line[0]) {
-		case '\0':
-		case '#':
-		case ';':
-			free(line);
-			break;
-		default:
-			if (!read_option(line, options)) {
-				fprintf(stderr, "Config file error line %d, could parse: %s\n", nu, line);
-				free(line);
-			}
-			break;
-		}
-	}
-	fclose(file);
-	return options;
-}
 
 // option_list.c
 void option_insert(list *l, char *key, char *val)
@@ -1530,6 +1502,35 @@ int read_option(char *s, list *options)
 	char *key = s;
 	option_insert(options, key, val);
 	return 1;
+}
+
+// option_list.c
+list *read_data_cfg(char *filename)
+{
+	FILE *file = fopen(filename, "r");
+	if (file == 0) file_error(filename);
+	char *line;
+	int nu = 0;
+	list *options = make_list();
+	while ((line = fgetl(file)) != 0) {
+		++nu;
+		strip(line);
+		switch (line[0]) {
+		case '\0':
+		case '#':
+		case ';':
+			free(line);
+			break;
+		default:
+			if (!read_option(line, options)) {
+				fprintf(stderr, "Config file error line %d, could parse: %s\n", nu, line);
+				free(line);
+			}
+			break;
+		}
+	}
+	fclose(file);
+	return options;
 }
 
 // option_list.c
@@ -1706,7 +1707,7 @@ void load_weights_upto_cpu(network *net, char *filename, int cutoff)
 	fread(&minor, sizeof(int), 1, fp);
 	fread(&revision, sizeof(int), 1, fp);
 	fread(net->seen, sizeof(int), 1, fp);
-	int transpose = (major > 1000) || (minor > 1000);
+	//int transpose = (major > 1000) || (minor > 1000);
 
 	int i;
 	for (i = 0; i < net->n && i < cutoff; ++i) {

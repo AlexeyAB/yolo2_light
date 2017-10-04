@@ -138,10 +138,13 @@ dim3 cuda_gridsize(size_t n) {
 	size_t x = k;
 	size_t y = 1;
 	if (x > 65535) {
-		x = ceil(sqrt(k));
+		x = ceil(sqrtf(k));
 		y = (n - 1) / (x*BLOCK) + 1;
 	}
-	dim3 d = { (unsigned)x, (unsigned)y, 1 };
+	dim3 d;
+	d.x = x;
+	d.y = y;
+	d.z = 1;
 	//printf("%ld %ld %ld %ld\n", n, x, y, x*y*BLOCK);
 	return d;
 }
@@ -209,7 +212,7 @@ __global__ void normalize_kernel(int N, float *x, float *mean, float *variance, 
 	if (index >= N) return;
 	int f = (index / spatial) % filters;
 
-	x[index] = (x[index] - mean[f]) / (sqrt(variance[f]) + .000001f);
+	x[index] = (x[index] - mean[f]) / (sqrtf(variance[f]) + .000001f);
 }
 
 void normalize_gpu(float *x, float *mean, float *variance, int batch, int filters, int spatial)
@@ -332,7 +335,7 @@ void flatten_ongpu(float *x, int spatial, int layers, int batch, int forward, fl
 
 // activations
 __device__ float linear_activate_kernel(float x) { return x; }
-__device__ float leaky_activate_kernel(float x) { return (x>0) ? x : .1*x; }
+__device__ float leaky_activate_kernel(float x) { return (x>0) ? x : .1f*x; }
 
 __device__ float activate_kernel(float x, ACTIVATION a)
 {
@@ -368,7 +371,7 @@ __device__ void softmax_device(int n, float *input, float temp, float *output)
 		largest = (val>largest) ? val : largest;
 	}
 	for (i = 0; i < n; ++i) {
-		float e = exp(input[i] / temp - largest / temp);
+		float e = expf(input[i] / temp - largest / temp);
 		sum += e;
 		output[i] = e;
 	}
@@ -412,17 +415,10 @@ __global__ void reorg_kernel(int N, float *x, int w, int h, int c, int batch, in
 	int offset = in_c / out_c;
 	int w2 = in_w*stride + offset % stride;
 	int h2 = in_h*stride + offset / stride;
-	//printf("%d\n", offset);
+
 	int out_index = w2 + w*stride*(h2 + h*stride*(c2 + out_c*b));
 
-	// printf("%d %d %d\n", w2, h2, c2);
-	//printf("%d %d\n", in_index, out_index);
-	//if(out_index >= N || out_index < 0) printf("bad bad bad \n");
-
-	if (forward) out[out_index] = x[in_index];
-	else out[in_index] = x[out_index];
-	//if(forward) out[1] = x[1];
-	//else out[0] = x[0];
+	out[in_index] = x[out_index];
 }
 
 void reorg_ongpu(float *x, int w, int h, int c, int batch, int stride, int forward, float *out)

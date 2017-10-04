@@ -1,6 +1,8 @@
 #include "additionally.h"	// some definitions from: im2col.h, blas.h, list.h, utils.h, activations.h, tree.h, layer.h, network.h
 							// softmax_layer.h, reorg_layer.h, route_layer.h, region_layer.h, maxpool_layer.h, convolutional_layer.h
 
+#define GEMMCONV
+
 // from: box.h
 typedef struct {
 	float x, y, w, h;
@@ -10,13 +12,13 @@ typedef struct {
 // 4 layers in 1: convolution, batch-normalization, BIAS and activation
 void forward_convolutional_layer_cpu(layer l, network_state state)
 {
-	
+
 	int out_h = (l.h + 2 * l.pad - l.size) / l.stride + 1;	// output_height=input_height for stride=1 and pad=1 
 	int out_w = (l.w + 2 * l.pad - l.size) / l.stride + 1;	// output_width=input_width for stride=1 and pad=1 
-	int i;
+	int i, f, j;
 
 	// fill zero (ALPHA)
-	for (int i = 0; i < l.outputs; ++i) l.output[i] = 0;
+	for (i = 0; i < l.outputs; ++i) l.output[i] = 0;
 
 	// l.n - number of filters on this layer
 	// l.c - channels of input-array
@@ -26,17 +28,18 @@ void forward_convolutional_layer_cpu(layer l, network_state state)
 
 
 	// 1. Convolution !!!
-/*
+#ifndef GEMMCONV
 	int fil;
 	// filter index 
 	#pragma omp parallel for  	// "omp parallel for" - automatic parallelization of loop by using OpenMP
-	for (fil = 0; fil < l.n; ++fil)
+	for (fil = 0; fil < l.n; ++fil) {
+		int chan, y, x, f_y, f_x;
 		// channel index
-		for (int chan = 0; chan < l.c; ++chan)
+		for (chan = 0; chan < l.c; ++chan)
 			// input - y
-			for (int y = 0; y < l.h; ++y)
+			for (y = 0; y < l.h; ++y)
 				// input - x
-				for (int x = 0; x < l.w; ++x)
+				for (x = 0; x < l.w; ++x)
 				{
 					int const output_index = fil*l.w*l.h + y*l.w + x;
 					int const weights_pre_index = fil*l.c*l.size*l.size + chan*l.size*l.size;
@@ -44,11 +47,11 @@ void forward_convolutional_layer_cpu(layer l, network_state state)
 					float sum = 0;
 
 					// filter - y
-					for (int f_y = 0; f_y < l.size; ++f_y)
+					for (f_y = 0; f_y < l.size; ++f_y)
 					{
 						int input_y = y + f_y - l.pad;
 						// filter - x
-						for (int f_x = 0; f_x < l.size; ++f_x)
+						for (f_x = 0; f_x < l.size; ++f_x)
 						{
 							int input_x = x + f_x - l.pad;
 							if (input_y < 0 || input_x < 0 || input_y >= l.h || input_x >= l.w) continue;
@@ -64,7 +67,8 @@ void forward_convolutional_layer_cpu(layer l, network_state state)
 					//		l.weights[filters][channels][filter_width][filter_height];
 					l.output[output_index] += sum;
 				}
-*/
+	}
+#else
 
 
 	int m = l.n;
@@ -81,22 +85,22 @@ void forward_convolutional_layer_cpu(layer l, network_state state)
 		c += n*m;
 		state.input += l.c*l.h*l.w;
 	}
-
+#endif
 	
 	int const out_size = out_h*out_w;
 
 	// 2. Batch normalization
 	if (l.batch_normalize) {
-		for (int f = 0; f < l.out_c; ++f) {
-			for (int i = 0; i < out_size; ++i) {
+		for (f = 0; f < l.out_c; ++f) {
+			for (i = 0; i < out_size; ++i) {
 				int index = f*out_size + i;
-				l.output[index] = (l.output[index] - l.rolling_mean[f]) / (sqrt(l.rolling_variance[f]) + .000001f);
+				l.output[index] = (l.output[index] - l.rolling_mean[f]) / (sqrtf(l.rolling_variance[f]) + .000001f);
 			}
 		}
 
 		// scale_bias
-		for (int i = 0; i < l.out_c; ++i) {
-			for (int j = 0; j < out_size; ++j) {
+		for (i = 0; i < l.out_c; ++i) {
+			for (j = 0; j < out_size; ++j) {
 				l.output[i*out_size + j] *= l.scales[i];
 			}
 		}
@@ -104,15 +108,16 @@ void forward_convolutional_layer_cpu(layer l, network_state state)
 
 
 	// 3. Add BIAS
-	for (int i = 0; i < l.n; ++i) {
-		for (int j = 0; j < out_size; ++j) {
+	//if (l.batch_normalize)
+	for (i = 0; i < l.n; ++i) {
+		for (j = 0; j < out_size; ++j) {
 			l.output[i*out_size + j] += l.biases[i];
 		}
 	}
 
 	// 4. Activation function (LEAKY or LINEAR)
 	if (l.activation == LEAKY) {
-		for (int i = 0; i < l.n*out_size; ++i) {
+		for (i = 0; i < l.n*out_size; ++i) {
 			l.output[i] = leaky_activate(l.output[i]);
 		}
 	}
@@ -234,7 +239,7 @@ static void softmax_cpu(float *input, int n, float temp, float *output)
 		if (input[i] > largest) largest = input[i];
 	}
 	for (i = 0; i < n; ++i) {
-		float e = exp(input[i] / temp - largest / temp);
+		float e = expf(input[i] / temp - largest / temp);
 		sum += e;
 		output[i] = e;
 	}
@@ -262,7 +267,7 @@ static void softmax_tree(float *input, int batch, int inputs, float temp, tree *
 // Region layer - just change places of array items, then do logistic_activate and softmax 
 void forward_region_layer_cpu(const layer l, network_state state)
 {
-	int i, j, b, t, n;
+	int i, b;
 	int size = l.coords + l.classes + 1;	// 4 Coords(x,y,w,h) + Classes + 1 Probability-t0
 	printf("\n l.coords = %d \n", l.coords);
 	memcpy(l.output, state.input, l.outputs*l.batch * sizeof(float));
@@ -301,7 +306,7 @@ void forward_region_layer_cpu(const layer l, network_state state)
 		for (i = 0; i < l.h*l.w*l.n; ++i) {
 			int index = size*i + b*l.outputs;
 			float x = l.output[index + 4];
-			l.output[index + 4] = 1. / (1. + exp(-x));	// logistic_activate_cpu(l.output[index + 4]);
+			l.output[index + 4] = 1.0F / (1.0F + expf(-x));	// logistic_activate_cpu(l.output[index + 4]);
 		}
 	}
 
@@ -396,8 +401,8 @@ box get_region_box_cpu(float *x, float *biases, int n, int index, int i, int j, 
 	box b;
 	b.x = (i + logistic_activate(x[index + 0])) / w;	// (col + 1./(1. + exp(-x))) / width_last_layer
 	b.y = (j + logistic_activate(x[index + 1])) / h;	// (row + 1./(1. + exp(-x))) / height_last_layer
-	b.w = exp(x[index + 2]) * biases[2 * n] / w;		// exp(x) * anchor_w / width_last_layer
-	b.h = exp(x[index + 3]) * biases[2 * n + 1] / h;	// exp(x) * anchor_h / height_last_layer
+	b.w = expf(x[index + 2]) * biases[2 * n] / w;		// exp(x) * anchor_w / width_last_layer
+	b.h = expf(x[index + 3]) * biases[2 * n + 1] / h;	// exp(x) * anchor_h / height_last_layer
 	return b;
 }
 

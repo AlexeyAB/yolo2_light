@@ -149,10 +149,10 @@ void test_dunion()
     float yinter = box_union(dya, b);
     float winter = box_union(dwa, b);
     float hinter = box_union(dha, b);
-    xinter = (xinter - inter)/(.0001);
-    yinter = (yinter - inter)/(.0001);
-    winter = (winter - inter)/(.0001);
-    hinter = (hinter - inter)/(.0001);
+    xinter = (xinter - inter)/(.0001F);
+    yinter = (yinter - inter)/(.0001F);
+    winter = (winter - inter)/(.0001F);
+    hinter = (hinter - inter)/(.0001F);
     printf("Union Manual %f %f %f %f\n", xinter, yinter, winter, hinter);
 }
 void test_dintersect()
@@ -171,10 +171,10 @@ void test_dintersect()
     float yinter = box_intersection(dya, b);
     float winter = box_intersection(dwa, b);
     float hinter = box_intersection(dha, b);
-    xinter = (xinter - inter)/(.0001);
-    yinter = (yinter - inter)/(.0001);
-    winter = (winter - inter)/(.0001);
-    hinter = (hinter - inter)/(.0001);
+    xinter = (xinter - inter)/(.0001F);
+    yinter = (yinter - inter)/(.0001F);
+    winter = (winter - inter)/(.0001F);
+    hinter = (hinter - inter)/(.0001F);
     printf("Inter Manual %f %f %f %f\n", xinter, yinter, winter, hinter);
 }
 
@@ -200,10 +200,10 @@ void test_box()
     float yiou = box_iou(dya, b);
     float wiou = box_iou(dwa, b);
     float hiou = box_iou(dha, b);
-    xiou = ((1-xiou)*(1-xiou) - iou)/(.00001);
-    yiou = ((1-yiou)*(1-yiou) - iou)/(.00001);
-    wiou = ((1-wiou)*(1-wiou) - iou)/(.00001);
-    hiou = ((1-hiou)*(1-hiou) - iou)/(.00001);
+    xiou = ((1-xiou)*(1-xiou) - iou)/(.00001F);
+    yiou = ((1-yiou)*(1-yiou) - iou)/(.00001F);
+    wiou = ((1-wiou)*(1-wiou) - iou)/(.00001F);
+    hiou = ((1-hiou)*(1-hiou) - iou)/(.00001F);
     printf("manual %f %f %f %f\n", xiou, yiou, wiou, hiou);
 }
 

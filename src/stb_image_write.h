@@ -49,7 +49,7 @@ USAGE:
    a row of pixels to the first byte of the next row of pixels.
 
    PNG creates output files with the same number of components as the input.
-   The BMP format expands Y to RGB in the file format and does not
+   The BMP format expfands Y to RGB in the file format and does not
    output alpha.
 
    PNG supports writing rectangles of data even when the bytes storing rows of
@@ -59,7 +59,7 @@ USAGE:
    writer, both because it is in BGR order and because it may have padding
    at the end of the line.)
 
-   HDR expects linear float data. Since the format is always 32-bit rgb(e)
+   HDR expfects linear float data. Since the format is always 32-bit rgb(e)
    data, alpha (if provided) is discarded, and for monochrome data it is
    replicated across all three channels.
 
@@ -156,7 +156,7 @@ static void write3(FILE *f, unsigned char a, unsigned char b, unsigned char c)
    fwrite(arr, 3, 1, f);
 }
 
-static void write_pixels(FILE *f, int rgb_dir, int vdir, int x, int y, int comp, void *data, int write_alpha, int scanline_pad, int expand_mono)
+static void write_pixels(FILE *f, int rgb_dir, int vdir, int x, int y, int comp, void *data, int write_alpha, int scanline_pad, int expfand_mono)
 {
    unsigned char bg[3] = { 255, 0, 255}, px[3];
    stbiw_uint32 zero = 0;
@@ -178,7 +178,7 @@ static void write_pixels(FILE *f, int rgb_dir, int vdir, int x, int y, int comp,
          switch (comp) {
             case 1: fwrite(d, 1, 1, f);
                     break;
-            case 2: if (expand_mono)
+            case 2: if (expfand_mono)
                        write3(f, d[0],d[0],d[0]); // monochrome bmp
                     else
                        fwrite(d, 1, 1, f);  // monochrome TGA
@@ -203,7 +203,7 @@ static void write_pixels(FILE *f, int rgb_dir, int vdir, int x, int y, int comp,
    }
 }
 
-static int outfile(char const *filename, int rgb_dir, int vdir, int x, int y, int comp, int expand_mono, void *data, int alpha, int pad, const char *fmt, ...)
+static int outfile(char const *filename, int rgb_dir, int vdir, int x, int y, int comp, int expfand_mono, void *data, int alpha, int pad, const char *fmt, ...)
 {
    FILE *f;
    if (y < 0 || x < 0) return 0;
@@ -213,7 +213,7 @@ static int outfile(char const *filename, int rgb_dir, int vdir, int x, int y, in
       va_start(v, fmt);
       writefv(f, fmt, v);
       va_end(v);
-      write_pixels(f,rgb_dir,vdir,x,y,comp,data,alpha,pad,expand_mono);
+      write_pixels(f,rgb_dir,vdir,x,y,comp,data,alpha,pad,expfand_mono);
       fclose(f);
    }
    return f != NULL;
@@ -244,18 +244,18 @@ int stbi_write_tga(char const *filename, int x, int y, int comp, const void *dat
 
 void stbiw__linear_to_rgbe(unsigned char *rgbe, float *linear)
 {
-   int exponent;
+   int expfonent;
    float maxcomp = stbiw__max(linear[0], stbiw__max(linear[1], linear[2]));
 
    if (maxcomp < 1e-32) {
       rgbe[0] = rgbe[1] = rgbe[2] = rgbe[3] = 0;
    } else {
-      float normalize = (float) frexp(maxcomp, &exponent) * 256.0f/maxcomp;
+      float normalize = (float) frexpf(maxcomp, &expfonent) * 256.0f/maxcomp;
 
       rgbe[0] = (unsigned char)(linear[0] * normalize);
       rgbe[1] = (unsigned char)(linear[1] * normalize);
       rgbe[2] = (unsigned char)(linear[2] * normalize);
-      rgbe[3] = (unsigned char)(exponent + 128);
+      rgbe[3] = (unsigned char)(expfonent + 128);
    }
 }
 
@@ -374,7 +374,7 @@ int stbi_write_hdr(char const *filename, int x, int y, int comp, const float *da
       /* Each component is stored separately. Allocate scratch space for full output scanline. */
       unsigned char *scratch = (unsigned char *) STBIW_MALLOC(x*4);
       fprintf(f, "#?RADIANCE\n# Written by stb_image_write.h\nFORMAT=32-bit_rle_rgbe\n"      );
-      fprintf(f, "EXPOSURE=          1.0000000000000\n\n-Y %d +X %d\n"                 , y, x);
+      fprintf(f, "expfOSURE=          1.0000000000000\n\n-Y %d +X %d\n"                 , y, x);
       for(i=0; i < y; i++)
          stbiw__write_hdr_scanline(f, x, comp, scratch, data + comp*i*x);
       STBIW_FREE(scratch);

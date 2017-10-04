@@ -18,7 +18,7 @@ void forward_convolutional_layer_gpu_cudnn(layer l, network_state state)
 	fill_ongpu(l.outputs*l.batch, 0, l.output_gpu, 1);
 
 	float one = 1;
-	// cuDNN v5.1
+	// cuDNN >= v5.1
 	cudnnConvolutionForward(cudnn_handle(),
 		&one,
 		l.srcTensorDesc,
@@ -116,14 +116,14 @@ void forward_region_layer_gpu_cuda(const layer l, network_state state)
 	cpu_state.truth = truth_cpu;
 	cpu_state.input = in_cpu;
 
-	int i, j, b, t, n;
+	int i, b;
 	int size = l.coords + l.classes + 1;
 	memcpy(l.output, cpu_state.input, l.outputs*l.batch * sizeof(float));
 	for (b = 0; b < l.batch; ++b) {
 		for (i = 0; i < l.h*l.w*l.n; ++i) {
 			int index = size*i + b*l.outputs;
 			float x = l.output[index + 4];
-			l.output[index + 4] = 1. / (1. + exp(-x));	// logistic_activate_cpu(l.output[index + 4]);
+			l.output[index + 4] = 1.0F / (1.0F + expf(-x));	// logistic_activate_cpu(l.output[index + 4]);
 		}
 	}
 

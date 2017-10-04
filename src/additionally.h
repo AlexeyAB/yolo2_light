@@ -2,9 +2,6 @@
 #ifndef ADDITIONALLY_H
 #define ADDITIONALLY_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -13,6 +10,7 @@ extern "C" {
 #include <math.h>
 #include <string.h>
 #include <float.h>
+#include <limits.h>
 
 #ifdef CUDNN
 #include "cudnn.h"
@@ -27,10 +25,24 @@ extern "C" {
 #ifdef OPENCV
 #include "opencv2/highgui/highgui_c.h"
 #include "opencv2/imgproc/imgproc_c.h"
+#include "opencv2/core/types_c.h"
+#include "opencv2/core/version.hpp"
+
+// for OpenCV 3.x only
+#ifndef CV_VERSION_EPOCH
+#include "opencv2/imgcodecs/imgcodecs_c.h"
+#include "opencv2/videoio/videoio_c.h"
+#endif
+
+#endif
+
+#ifdef __cplusplus
+extern "C" {
 #endif
 
 extern int gpu_index;
 
+// -------------- im2col.h --------------
 
 // im2col.c
 float im2col_get_pixel(float *im, int height, int width, int channels,
@@ -161,8 +173,8 @@ typedef enum {
 }ACTIVATION;
 
 static inline float linear_activate(float x) { return x; }
-static inline float logistic_activate(float x) { return 1. / (1. + exp(-x)); }
-static inline float leaky_activate(float x) { return (x>0) ? x : .1*x; }
+static inline float logistic_activate(float x) { return 1.0F / (1.0F + expf(-x)); }
+static inline float leaky_activate(float x) { return (x>0) ? x : 0.1F * x; }
 
 static inline ACTIVATION get_activation(char *s)
 {
@@ -196,6 +208,9 @@ typedef struct {
 	int *group_size;
 	int *group_offset;
 } tree;
+
+// tree.c
+void hierarchy_predictions(float *predictions, int n, tree *hier, int only_leaves);
 
 // -------------- layer.h --------------
 
@@ -543,6 +558,7 @@ network make_network(int n);
 #ifdef GPU
 #ifdef CUDNN
 void cudnn_convolutional_setup(layer *l);
+void cuda_set_device(int n);
 #endif
 #endif
 
@@ -629,6 +645,9 @@ image load_image_stb(char *filename, int channels);
 #ifdef OPENCV
 // image.c
 image ipl_to_image(IplImage* src);
+
+// image.c
+void show_image_cv_ipl(IplImage *disp, const char *name);
 #endif
 
 // image.c
@@ -643,6 +662,7 @@ void save_image_png(image im, const char *name);
 // image.c
 void show_image(image p, const char *name);
 
+
 // -------------- parser.c --------------------
 
 // parser.c
@@ -651,15 +671,30 @@ network parse_network_cfg(char *filename);
 // parser.c
 void load_weights_upto_cpu(network *net, char *filename, int cutoff);
 
+
+// -------------- yolov2_forward_network.c --------------------
+
+
+// detect on CPU: yolov2_forward_network.c
+float *network_predict_cpu(network net, float *input);
+
+// -------------- yolov2_forward_network_gpu.c --------------------
+
+#ifdef GPU
+// detect on GPU: yolov2_forward_network_gpu.cu
+float *network_predict_gpu_cudnn(network net, float *input);
+#endif
+
 // -------------- gettimeofday for Windows--------------------
 
 #if defined(_MSC_VER) 
-#include < time.h >
+#include <time.h>
 #include <windows.h> //I've ommited this line.
 #if defined(_MSC_VER) || defined(_MSC_EXTENSIONS)
 #define DELTA_EPOCH_IN_MICROSECS  11644473600000000Ui64
 #else
 #define DELTA_EPOCH_IN_MICROSECS  11644473600000000ULL
+#include <sys/time.h>
 #endif
 
 struct timezone
@@ -667,6 +702,8 @@ struct timezone
 	int  tz_minuteswest; /* minutes W of Greenwich */
 	int  tz_dsttime;     /* type of dst correction */
 };
+
+int gettimeofday(struct timeval *tv, struct timezone *tz);
 #endif
 
 #ifdef __cplusplus

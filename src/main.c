@@ -1,31 +1,30 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-
 #include "box.h"
 #include "pthread.h"
 
 #include "additionally.h"
 
 #ifdef OPENCV
-#pragma comment(lib, "opencv_core249.lib")
-#pragma comment(lib, "opencv_imgproc249.lib")
-#pragma comment(lib, "opencv_highgui249.lib")
-
 #include "opencv2/highgui/highgui_c.h"
-#include "opencv2/imgproc/imgproc_c.h"
+#include "opencv2/core/core_c.h"
+#include "opencv2/core/version.hpp"
+#ifndef CV_VERSION_EPOCH
+// for OpenCV 3.x
+#pragma comment(lib, "opencv_world320.lib")  
+#else
+// for OpenCV 2.4.x
+#pragma comment(lib, "opencv_core2413.lib")  
+#pragma comment(lib, "opencv_imgproc2413.lib")  
+#pragma comment(lib, "opencv_highgui2413.lib") 
 #endif
 
-
-
-// detect on CPU: yolov2_forward_network.c
-float *network_predict_cpu(network net, float *input);
-
-// detect on GPU: yolov2_forward_network_gpu.cu
-float *network_predict_gpu_cudnn(network net, float *input);
+#endif
 
 // get prediction boxes: yolov2_forward_network.c
 void get_region_boxes_cpu(layer l, int w, int h, float thresh, float **probs, box *boxes, int only_objectness, int *map);
+
 
 // draw detection without OpenCV
 void draw_detections_cpu(image im, int num, float thresh, box *boxes, float **probs, char **names, image **alphabet, int classes)
@@ -86,8 +85,7 @@ void test_detector_cpu(char **names, char *cfgfile, char *weightfile, char *file
 	image **alphabet = NULL;
 	network net = parse_network_cfg(cfgfile);	// parser.c
 	if (weightfile) {
-		//load_weights(&net, weightfile);			// parser.c
-		load_weights_upto_cpu(&net, weightfile, net.n);
+		load_weights_upto_cpu(&net, weightfile, net.n);	// parser.c
 	}
 	set_batch_network(&net, 1);					// network.c
 	srand(2222222);
@@ -126,7 +124,7 @@ void test_detector_cpu(char **names, char *cfgfile, char *weightfile, char *file
 		printf("%s: Predicted in %f seconds.\n", input, (float)(clock() - time) / CLOCKS_PER_SEC); //sec(clock() - time));
 		get_region_boxes_cpu(l, 1, 1, thresh, probs, boxes, 0, 0);			// get_region_boxes(): region_layer.c
 
-																			//  nms (non maximum suppression) - if (IoU(box[i], box[j]) > nms) then remove one of two boxes with lower probability
+		//  nms (non maximum suppression) - if (IoU(box[i], box[j]) > nms) then remove one of two boxes with lower probability
 		if (nms) do_nms_sort(boxes, probs, l.w*l.h*l.n, l.classes, nms);	// box.c
 		draw_detections_cpu(im, l.w*l.h*l.n, thresh, boxes, probs, names, alphabet, l.classes);	// draw_detections(): image.c
 		save_image_png(im, "predictions");	// image.c
@@ -180,7 +178,7 @@ void draw_detections_cv_cpu(IplImage* show_img, int num, float thresh, box *boxe
 			int width = show_img->height * .012;
 
 			if (0) {
-				width = pow(prob, 1. / 2.) * 10 + 1;
+				width = powf(prob, 1. / 2.) * 10 + 1;
 			}
 
 			printf("%s: %.0f%%\n", names[class], prob * 100);
@@ -300,9 +298,8 @@ static double get_wall_time()
 }
 
 
-
 // Detect on Video: this function uses other functions not from this file
-void demo_cpu(char *cfgfile, char *weightfile, float thresh, int cam_index, const char *filename, char **names, int classes, int frame_skip, char *prefix)
+void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const char *filename, char **names, int classes, int frame_skip, char *prefix)
 {
 	int delay = frame_skip;
 	demo_names = names;
@@ -446,7 +443,7 @@ void run_detector(int argc, char **argv)
 	//else if (0 == strcmp(argv[2], "valid")) validate_detector(datacfg, cfg, weights);
 	//else if (0 == strcmp(argv[2], "recall")) validate_detector_recall(datacfg, cfg, weights);
 	else if (0 == strcmp(argv[2], "demo")) {
-		demo_cpu(cfg, weights, thresh, cam_index, filename, names, classes, frame_skip, prefix);
+		demo(cfg, weights, thresh, cam_index, filename, names, classes, frame_skip, prefix);
 	}
 
 	int i;
