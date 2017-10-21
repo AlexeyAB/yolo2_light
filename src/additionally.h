@@ -11,6 +11,7 @@
 #include <string.h>
 #include <float.h>
 #include <limits.h>
+#include <stdint.h>
 
 #ifdef CUDNN
 #include "cudnn.h"
@@ -493,7 +494,7 @@ typedef struct network {
 	float *workspace;
 	int n;
 	int batch;
-	int *seen;
+	uint64_t *seen;
 	float epoch;
 	int subdivisions;
 	float momentum;

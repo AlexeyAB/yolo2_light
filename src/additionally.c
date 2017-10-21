@@ -532,7 +532,7 @@ network make_network(int n)
     network net = {0};
     net.n = n;
     net.layers = calloc(net.n, sizeof(layer));
-    net.seen = calloc(1, sizeof(int));
+    net.seen = calloc(1, sizeof(uint64_t));
     #ifdef GPU
     net.input_gpu = calloc(1, sizeof(float *));
     net.truth_gpu = calloc(1, sizeof(float *));
@@ -1706,7 +1706,14 @@ void load_weights_upto_cpu(network *net, char *filename, int cutoff)
 	fread(&major, sizeof(int), 1, fp);
 	fread(&minor, sizeof(int), 1, fp);
 	fread(&revision, sizeof(int), 1, fp);
-	fread(net->seen, sizeof(int), 1, fp);
+	if ((major * 10 + minor) >= 2) {
+		fread(net->seen, sizeof(uint64_t), 1, fp);
+	}
+	else {
+		int iseen = 0;
+		fread(&iseen, sizeof(int), 1, fp);
+		*net->seen = iseen;
+	}
 	//int transpose = (major > 1000) || (minor > 1000);
 
 	int i;
