@@ -10,14 +10,16 @@
 #include "opencv2/highgui/highgui_c.h"
 #include "opencv2/core/core_c.h"
 #include "opencv2/core/version.hpp"
+
 #ifndef CV_VERSION_EPOCH
-// for OpenCV 3.x
-#pragma comment(lib, "opencv_world320.lib")  
+#include "opencv2/videoio/videoio_c.h"
+#define OPENCV_VERSION CVAUX_STR(CV_VERSION_MAJOR)""CVAUX_STR(CV_VERSION_MINOR)""CVAUX_STR(CV_VERSION_REVISION)
+#pragma comment(lib, "opencv_world" OPENCV_VERSION ".lib")
 #else
-// for OpenCV 2.4.x
-#pragma comment(lib, "opencv_core2413.lib")  
-#pragma comment(lib, "opencv_imgproc2413.lib")  
-#pragma comment(lib, "opencv_highgui2413.lib") 
+#define OPENCV_VERSION CVAUX_STR(CV_VERSION_EPOCH)""CVAUX_STR(CV_VERSION_MAJOR)""CVAUX_STR(CV_VERSION_MINOR)
+#pragma comment(lib, "opencv_core" OPENCV_VERSION ".lib")
+#pragma comment(lib, "opencv_imgproc" OPENCV_VERSION ".lib")
+#pragma comment(lib, "opencv_highgui" OPENCV_VERSION ".lib")
 #endif
 
 #endif
@@ -119,7 +121,11 @@ void test_detector_cpu(char **names, char *cfgfile, char *weightfile, char *file
 #ifdef GPU
 		network_predict_gpu_cudnn(net, X);
 #else
+#ifdef OPENCL
+		network_predict_opencl(net, X);
+#else
 		network_predict_cpu(net, X);
+#endif
 #endif
 		printf("%s: Predicted in %f seconds.\n", input, (float)(clock() - time) / CLOCKS_PER_SEC); //sec(clock() - time));
 		get_region_boxes_cpu(l, 1, 1, thresh, probs, boxes, 0, 0);			// get_region_boxes(): region_layer.c
@@ -273,7 +279,11 @@ static void *detect_in_thread(void *ptr)
 #ifdef GPU
 	network_predict_gpu_cudnn(net, X);
 #else
+#ifdef OPENCL
+	network_predict_opencl(net, X);
+#else
 	network_predict_cpu(net, X);
+#endif
 #endif
 
 	free_image(det_s);
@@ -466,6 +476,9 @@ int main(int argc, char **argv)
 	if (gpu_index >= 0) {
 		cuda_set_device(gpu_index);
 	}
+#endif
+#ifdef OPENCL
+	ocl_initialize();
 #endif
 	run_detector(argc, argv);
 	return 0;

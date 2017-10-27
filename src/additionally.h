@@ -23,6 +23,10 @@
 #include "cublas_v2.h"
 #endif
 
+#ifdef OPENCL
+#include "CL/cl.h"
+#endif
+
 #ifdef OPENCV
 #include "opencv2/highgui/highgui_c.h"
 #include "opencv2/imgproc/imgproc_c.h"
@@ -471,6 +475,18 @@ struct layer {
 	cudnnConvolutionBwdFilterAlgo_t bf_algo;
 #endif
 #endif
+
+#ifdef OPENCL
+	cl_mem weights_ocl;
+	cl_mem biases_ocl;
+	cl_mem scales_ocl;
+	cl_mem rolling_mean_ocl;
+	cl_mem rolling_variance_ocl;
+
+	cl_mem output_ocl;
+	cl_mem indexes_ocl;
+	cl_mem x_ocl;
+#endif
 };
 
 typedef layer local_layer;
@@ -538,6 +554,10 @@ typedef struct network {
 	float **input_gpu;
 	float **truth_gpu;
 #endif
+
+#ifdef OPENCL
+	cl_mem workspace_ocl;
+#endif
 } network;
 
 typedef struct network_state {
@@ -548,6 +568,10 @@ typedef struct network_state {
 	int train;
 	int index;
 	network net;
+#ifdef OPENCL
+	cl_mem input_ocl;
+	cl_mem workspace_ocl;
+#endif
 } network_state;
 
 
@@ -561,6 +585,10 @@ network make_network(int n);
 void cudnn_convolutional_setup(layer *l);
 void cuda_set_device(int n);
 #endif
+#endif
+
+#ifdef OPENCL
+bool ocl_initialize();
 #endif
 
 // network.c
@@ -685,6 +713,14 @@ float *network_predict_cpu(network net, float *input);
 // detect on GPU: yolov2_forward_network_gpu.cu
 float *network_predict_gpu_cudnn(network net, float *input);
 #endif
+
+// -------------- yolov2_forward_network_ocl.c --------------------
+
+#ifdef OPENCL
+// detect using OpenCL: yolov2_forward_network_gpu.cpp
+float *network_predict_opencl(network net, float *input);
+#endif
+
 
 // -------------- gettimeofday for Windows--------------------
 

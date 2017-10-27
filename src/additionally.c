@@ -1,6 +1,10 @@
 #include "additionally.h"
 #include "gpu.h"
 
+#ifdef OPENCL
+#include "ocl.h"
+#endif
+
 #ifdef CUDNN
 #pragma comment(lib, "cudnn.lib")  
 #endif
@@ -726,8 +730,13 @@ softmax_layer make_softmax_layer(int batch, int inputs, int groups)
 	//l.backward_gpu = backward_softmax_layer_gpu;
 
 	l.output_gpu = cuda_make_array(l.output, inputs*batch);
-	l.delta_gpu = cuda_make_array(l.delta, inputs*batch);
+	//l.delta_gpu = cuda_make_array(l.delta, inputs*batch);
 #endif
+
+#ifdef OPENCL
+	l.output_ocl = ocl_make_array(l.output, inputs*batch);
+#endif
+
 	return l;
 }
 
@@ -770,7 +779,11 @@ layer make_reorg_layer(int batch, int w, int h, int c, int stride, int reverse)
 	//l.backward_gpu = backward_reorg_layer_gpu;
 
 	l.output_gpu = cuda_make_array(l.output, output_size);
-	l.delta_gpu = cuda_make_array(l.delta, output_size);
+	//l.delta_gpu = cuda_make_array(l.delta, output_size);
+#endif
+
+#ifdef OPENCL
+	l.output_ocl = ocl_make_array(l.output, output_size);
 #endif
 	return l;
 }
@@ -807,8 +820,12 @@ route_layer make_route_layer(int batch, int n, int *input_layers, int *input_siz
 	//l.forward_gpu = forward_route_layer_gpu;
 	//l.backward_gpu = backward_route_layer_gpu;
 
-	l.delta_gpu = cuda_make_array(l.delta, outputs*batch);
+	//l.delta_gpu = cuda_make_array(l.delta, outputs*batch);
 	l.output_gpu = cuda_make_array(l.output, outputs*batch);
+#endif
+
+#ifdef OPENCL
+	l.output_ocl = ocl_make_array(l.output, outputs*batch);
 #endif
 	return l;
 }
@@ -848,7 +865,11 @@ region_layer make_region_layer(int batch, int w, int h, int n, int classes, int 
 	//l.forward_gpu = forward_region_layer_gpu;
 	//l.backward_gpu = backward_region_layer_gpu;
 	l.output_gpu = cuda_make_array(l.output, batch*l.outputs);
-	l.delta_gpu = cuda_make_array(l.delta, batch*l.outputs);
+	//l.delta_gpu = cuda_make_array(l.delta, batch*l.outputs);
+#endif
+
+#ifdef OPENCL
+	l.output_ocl = ocl_make_array(l.output, batch*l.outputs);
 #endif
 
 	fprintf(stderr, "detection\n");
@@ -890,7 +911,12 @@ maxpool_layer make_maxpool_layer(int batch, int h, int w, int c, int size, int s
 	//l.backward_gpu = backward_maxpool_layer_gpu;
 	l.indexes_gpu = cuda_make_int_array(output_size);
 	l.output_gpu = cuda_make_array(l.output, output_size);
-	l.delta_gpu = cuda_make_array(l.delta, output_size);
+	//l.delta_gpu = cuda_make_array(l.delta, output_size);
+#endif
+
+#ifdef OPENCL
+	l.indexes_ocl = ocl_make_int_array(output_size);
+	l.output_ocl = ocl_make_array(l.output, output_size);
 #endif
 	fprintf(stderr, "max          %d x %d / %d  %4d x%4d x%4d   ->  %4d x%4d x%4d\n", size, size, stride, w, h, c, l.out_w, l.out_h, l.out_c);
 	return l;
@@ -1046,43 +1072,43 @@ convolutional_layer make_convolutional_layer(int batch, int h, int w, int c, int
 	//l.update_gpu = update_convolutional_layer_gpu;
 
 	if (gpu_index >= 0) {
-		if (adam) {
-			l.m_gpu = cuda_make_array(l.m, c*n*size*size);
-			l.v_gpu = cuda_make_array(l.v, c*n*size*size);
-		}
+		//if (adam) {
+		//	l.m_gpu = cuda_make_array(l.m, c*n*size*size);
+		//	l.v_gpu = cuda_make_array(l.v, c*n*size*size);
+		//}
 
 		l.weights_gpu = cuda_make_array(l.weights, c*n*size*size);
-		l.weight_updates_gpu = cuda_make_array(l.weight_updates, c*n*size*size);
+		//l.weight_updates_gpu = cuda_make_array(l.weight_updates, c*n*size*size);
 
 		l.biases_gpu = cuda_make_array(l.biases, n);
-		l.bias_updates_gpu = cuda_make_array(l.bias_updates, n);
+		//l.bias_updates_gpu = cuda_make_array(l.bias_updates, n);
 
-		l.delta_gpu = cuda_make_array(l.delta, l.batch*out_h*out_w*n);
+		//l.delta_gpu = cuda_make_array(l.delta, l.batch*out_h*out_w*n);
 		l.output_gpu = cuda_make_array(l.output, l.batch*out_h*out_w*n);
 
-		if (binary) {
-			l.binary_weights_gpu = cuda_make_array(l.weights, c*n*size*size);
-		}
-		if (xnor) {
-			l.binary_weights_gpu = cuda_make_array(l.weights, c*n*size*size);
-			l.binary_input_gpu = cuda_make_array(0, l.inputs*l.batch);
-		}
+		//if (binary) {
+		//	l.binary_weights_gpu = cuda_make_array(l.weights, c*n*size*size);
+		//}
+		//if (xnor) {
+		//	l.binary_weights_gpu = cuda_make_array(l.weights, c*n*size*size);
+		//	l.binary_input_gpu = cuda_make_array(0, l.inputs*l.batch);
+		//}
 
 		if (batch_normalize) {
-			l.mean_gpu = cuda_make_array(l.mean, n);
-			l.variance_gpu = cuda_make_array(l.variance, n);
+			//l.mean_gpu = cuda_make_array(l.mean, n);
+			//l.variance_gpu = cuda_make_array(l.variance, n);
 
 			l.rolling_mean_gpu = cuda_make_array(l.mean, n);
 			l.rolling_variance_gpu = cuda_make_array(l.variance, n);
 
-			l.mean_delta_gpu = cuda_make_array(l.mean, n);
-			l.variance_delta_gpu = cuda_make_array(l.variance, n);
+			//l.mean_delta_gpu = cuda_make_array(l.mean, n);
+			//l.variance_delta_gpu = cuda_make_array(l.variance, n);
 
 			l.scales_gpu = cuda_make_array(l.scales, n);
-			l.scale_updates_gpu = cuda_make_array(l.scale_updates, n);
+			//l.scale_updates_gpu = cuda_make_array(l.scale_updates, n);
 
 			l.x_gpu = cuda_make_array(l.output, l.batch*out_h*out_w*n);
-			l.x_norm_gpu = cuda_make_array(l.output, l.batch*out_h*out_w*n);
+			//l.x_norm_gpu = cuda_make_array(l.output, l.batch*out_h*out_w*n);
 		}
 #ifdef CUDNN
 		cudnnCreateTensorDescriptor(&l.srcTensorDesc);
@@ -1096,6 +1122,24 @@ convolutional_layer make_convolutional_layer(int batch, int h, int w, int c, int
 #endif
 	}
 #endif
+
+#ifdef OPENCL
+	//if (gpu_index >= 0) {
+
+		l.weights_ocl = ocl_make_array(l.weights, c*n*size*size);
+		l.biases_ocl = ocl_make_array(l.biases, n);
+		l.output_ocl = ocl_make_array(l.output, l.batch*out_h*out_w*n);
+
+		if (batch_normalize) {
+			l.rolling_mean_ocl = ocl_make_array(l.rolling_mean, n);	// l.mean
+			l.rolling_variance_ocl = ocl_make_array(l.rolling_variance, n);	// l.variance
+			l.scales_ocl = ocl_make_array(l.scales, n);
+
+			l.x_ocl = ocl_make_array(l.output, l.batch*out_h*out_w*n);
+		}
+	//}
+#endif
+
 	l.workspace_size = get_workspace_size(l);
 	l.activation = activation;
 
@@ -1685,6 +1729,12 @@ void load_convolutional_weights_cpu(layer l, FILE *fp)
 		push_convolutional_layer(l);
 	}
 #endif
+
+#ifdef OPENCL
+	//if (gpu_index >= 0) {
+		ocl_push_convolutional_layer(l);
+	//}
+#endif
 }
 
 // parser.c
@@ -2120,6 +2170,14 @@ network parse_network_cfg(char *filename)
 		}
 #else
 		net.workspace = calloc(1, workspace_size);
+#endif
+
+#ifdef OPENCL
+		//if (gpu_index >= 0) {
+			net.workspace_ocl = ocl_make_array(0, workspace_size/sizeof(float));
+			//net.workspace_ocl = ocl_make_array(0, (workspace_size - 1) / sizeof(float) + 1);
+			//net.workspace_ocl = ocl_make_array(NULL, 1024*1024*1024);
+		//}
 #endif
 	}
 	return net;
