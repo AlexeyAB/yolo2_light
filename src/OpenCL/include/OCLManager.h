@@ -1,4 +1,3 @@
-
 /*Copyright 2017 Sateesh Pedagadi
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,7 +22,6 @@ limitations under the License.*/
 #include <iostream>
 #include "CL/cl.h"
 #include "cl_wrapper.hpp"
-#include "GlobalDefines.h"
 #include "clblast.h"
 //#include "clblast_half.h"
 
@@ -37,13 +35,15 @@ using namespace std;;
 
 string ExePath();
 
-
+/*
 typedef struct {
 
 	void			*m_PinnedMemory;
 	OCLBuffer		*m_OCLBuffer;
 
 }StructPinnedOCLBuffer;
+*/
+
 
 float sec(clock_t clocks);
 
@@ -56,6 +56,7 @@ enum {
 	NN_KERNEL_IDX_FLATARR,
 	NN_KERNEL_IDX_SOFTMAX,
 	NN_KERNEL_IDX_MAXPOOL,
+	NN_KERNEL_IDX_REORG,
 	NN_KERNEL_IDX_RESETARR,
 	NN_MAX_KERNEL_COUNT
 };
@@ -70,6 +71,7 @@ static const char* NN_KERNEL_NAMES[NN_MAX_KERNEL_COUNT] = {
 	"flattenarray",
 	"softmax",
 	"maxpool",
+	"reorg",
 	"resetarray"
 };
 
@@ -83,12 +85,6 @@ public:
 	int Finalize();
 	void ReleaseLock();
 	void SetLock();
-
-	float SoftMax(OCLBuffer *input, int n, int offset, int groups, float temp, OCLBuffer *output, int base);
-	float OCLManager::ResetArray(int N, OCLBuffer *inArray, OCLBuffer *biasArray, int filtSize);
-
-	StructPinnedOCLBuffer* InitializePinnedFloatArray(size_t numItems);
-	void FinalizePinnedFloatArray(StructPinnedOCLBuffer*);
 
 	const char *GetDeviceName() { return m_DeviceName; };
 

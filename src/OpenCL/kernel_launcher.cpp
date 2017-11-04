@@ -13,7 +13,7 @@ KernelLauncher::KernelLauncher(cl_device_id device_id, cl_kernel *kernel, cl_com
     //Finding number of arguments in given kernel and making
     //an bool array to track its data content
     status = clGetKernelInfo(*_pKernel, CL_KERNEL_NUM_ARGS, sizeof(cl_int), &_numArgs, NULL);
-    DEBUG_CL(status);
+    //DEBUG_CL(status);
     printf("Number of kernel Arguments : %d %s \n",_numArgs, kernelName.c_str());
     this->_argListData = (cl_bool*) malloc(_numArgs*sizeof(cl_bool));//new cl_bool[numArgs];
     for(int i=0; i<_numArgs; i++)

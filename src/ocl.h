@@ -6,8 +6,6 @@
 #include "CL/cl.h"
 
 
-//#include "additionally.h"
-
 #ifdef __cplusplus
 extern "C" {
 #endif

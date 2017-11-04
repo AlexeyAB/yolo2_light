@@ -1,4 +1,3 @@
-
 /*Copyright 2017 Sateesh Pedagadi
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.*/
 
 #include "include/OCLManager.h"
+#include "include/clutils.h"
 
 #define BLOCK 8
 
@@ -152,6 +152,7 @@ void OCLManager::FinalizePinnedFloatArray(StructPinnedOCLBuffer *oclPinnedBuffer
 }
 */
 
+/*
 float OCLManager::ResetArray(int N, OCLBuffer *inArray, OCLBuffer *biasArray, int filtSize) {
 
 	int globalDimX = N / BLOCK;
@@ -189,3 +190,4 @@ float OCLManager::SoftMax(OCLBuffer *input, int n, int offset, int groups, float
 	m_OpenCLKernels[NN_KERNEL_IDX_SOFTMAX]->arg(6, base);
 	return m_OpenCLKernels[NN_KERNEL_IDX_SOFTMAX]->run(PROFILE_KERNELS, BLOCK_KERNEL_EXEC);
 }
+*/

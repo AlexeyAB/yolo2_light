@@ -125,18 +125,11 @@
     <ClCompile Include="src\additionally.c" />
     <ClCompile Include="src\box.c" />
     <ClCompile Include="src\main.c" />
-    <ClCompile Include="src\OpenCL\buffer.cpp" />
     <ClCompile Include="src\OpenCL\clutils.cpp" />
     <ClCompile Include="src\OpenCL\cl_wrapper.cpp" />
-    <ClCompile Include="src\OpenCL\helpers.cpp" />
-    <ClCompile Include="src\OpenCL\image2D.cpp" />
-    <ClCompile Include="src\OpenCL\iv_common.cpp" />
     <ClCompile Include="src\OpenCL\kernel_launcher.cpp" />
     <ClCompile Include="src\OpenCL\OCLManager.cpp" />
-    <ClCompile Include="src\OpenCL\oclUtils.cpp" />
     <ClCompile Include="src\OpenCL\program.cpp" />
-    <ClCompile Include="src\OpenCL\sampler.cpp" />
-    <ClCompile Include="src\OpenCL\shrUtils.cpp" />
     <ClCompile Include="src\yolov2_forward_network.c" />
     <ClCompile Include="src\yolov2_forward_network_ocl.cpp" />
   </ItemGroup>
@@ -144,7 +137,6 @@
     <ClInclude Include="src\additionally.h" />
     <ClInclude Include="src\box.h" />
     <ClInclude Include="src\ocl.h" />
-    <ClInclude Include="src\OpenCL\include\buffer.h" />
     <ClInclude Include="src\stb_image.h" />
     <ClInclude Include="src\stb_image_write.h" />
   </ItemGroup>

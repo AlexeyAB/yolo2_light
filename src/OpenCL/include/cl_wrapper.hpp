@@ -5,14 +5,9 @@
  * Enable CL_INFO_PRINT macro to see OpenCL Device and Kernel Info
  *
  */
-#include "iv_common.h"
 #include "CL/cl.h"
-//#include "CL/cl.hpp"
 
 #include "program.h"
-#include "buffer.h"
-#include "image2D.h"
-#include "sampler.h"
 
 
 #define NUMBER_OF_PLATFORMS     5
@@ -24,21 +19,8 @@ public:
     void getPlatformID();
     void getDeviceID(char* deviceName);
     void getContextnQueue();
-    //Program* createProgram(std::string &kernelFilePath);
     Program* createProgram(std::vector<std::string> kernelFilePath);
-    OCLBuffer* createBuffer(const size_t size,
-                         const cl_mem_flags flags,
-                         void* hostMem);
-    Image2D* createImage2D(const size_t width,
-                           const size_t height,
-                           const cl_image_format* format,
-                           const cl_mem_flags flags = 0,
-                           const size_t rowPitch = 0,
-                           void* hostMem = NULL);
-    Sampler* createSampler(cl_bool normalizedCoords,
-                           cl_addressing_mode addrMode,
-                           cl_filter_mode filterMode);
-	
+
 	cl_command_queue* getQueue() {
 
 		return &_queue;

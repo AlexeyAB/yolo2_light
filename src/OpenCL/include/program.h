@@ -1,11 +1,8 @@
-#include <CL/cl.h>
-#include "iv_common.h"
-#include "kernel_launcher.h"
-
-
-
 #ifndef PROGRAM_H
 #define PROGRAM_H
+
+#include <CL/cl.h>
+#include "kernel_launcher.h"
 
 class Program
 {

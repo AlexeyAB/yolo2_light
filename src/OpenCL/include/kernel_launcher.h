@@ -1,11 +1,12 @@
-
-
 #ifndef KERNELLAUNCHER_H
 #define KERNELLAUNCHER_H
 
-#include "iv_common.h"
-
-
+#include <CL/opencl.h>
+#include <string>
+#include <iostream>
+#include <vector>
+#include <map>
+#include <fstream>
 
 class KernelLauncher
 {
@@ -37,7 +38,7 @@ public:
             exit(-1);///!TODO: Custom exit code
         }
         cl_int status = clSetKernelArg(*_pKernel, index, sizeof(x), &x);
-        DEBUG_CL(status);
+        //DEBUG_CL(status);
         _argListData[index] = true;
         return *this;
     }

@@ -4,8 +4,8 @@
 #include "additionally.h"
 #include "ocl.h"
 
-#include "OpenCL/include/GlobalDefines.h"
 #include "OpenCL/include/OCLManager.h"
+#include "OpenCL/include/clutils.h"
 
 OCLManager* m_OCLManager;
 
@@ -36,7 +36,7 @@ void ocl_push_array(cl_mem x_gpu, float *x, size_t n)
 	//getchar();
 	cl_int status;
 	status = clEnqueueWriteBuffer(*m_OCLManager->m_OpenCLSetup.getQueue(), x_gpu, CL_TRUE, 0, size, x, 0, NULL, NULL);
-	DEBUG_CL(status);
+	//DEBUG_CL(status);
 	if (status != CL_SUCCESS) {
 		printf("\n clWrite buffer error : %s", getCLErrorString(status));
 		exit(-1);
@@ -148,8 +148,6 @@ void forward_convolutional_layer_opencl(layer l, network_state state)
 			m, n, k,
 			1.0f, a, 0, k, b, 0, n, 1.0f, c, 0, n, m_OCLManager->m_OpenCLSetup.getQueue());
 
-		//clFinish(*m_OCLManager->m_OpenCLSetup.getQueue());
-
 		if (status != clblast::StatusCode::kSuccess) {
 			//printf("\n clblast::Gemm error : %d", status);
 			printf("\n clblast::Gemm error \n");
@@ -231,57 +229,38 @@ void forward_maxpool_layer_opencl(const layer l, network_state state)
 
 
 // Route layer - just copy 1 or more layers into the current layer
-void forward_route_layer_cpu(const layer l, network_state state)
+void forward_route_layer_opencl(const layer l, network_state state)
 {
 	int i, j;
-	int offset = 0;
+	size_t offset = 0;
 	// number of merged layers
 	for (i = 0; i < l.n; ++i) {
 		int index = l.input_layers[i];					// source layer index
-		float *input = state.net.layers[index].output;	// source layer output ptr
-		int input_size = l.input_sizes[i];				// source layer size
-														// batch index
-		for (j = 0; j < l.batch; ++j) {
-			memcpy(l.output + offset + j*l.outputs, input + j*input_size, input_size * sizeof(float));
-		}
-		offset += input_size;
+		cl_mem input_ocl = state.net.layers[index].output_ocl;
+		size_t input_size_bytes = l.input_sizes[i] * sizeof(float);
+
+		cl_int status = clEnqueueCopyBuffer(*m_OCLManager->m_OpenCLSetup.getQueue(),
+			input_ocl, l.output_ocl, 0, offset, input_size_bytes, 0, NULL, NULL);
+
+		offset += input_size_bytes;
 	}
 }
 
 
 // Reorg layer - just change dimension sizes of the previous layer (some dimension sizes are increased by decreasing other)
-void forward_reorg_layer_cpu(const layer l, network_state state)
+void forward_reorg_layer_opencl(const layer l, network_state state)
 {
-	float *out = l.output;
-	float *x = state.input;
-	int w = l.w;
-	int h = l.h;
-	int c = l.c;
-	int batch = l.batch;
+	m_OCLManager->m_OpenCLKernels[NN_KERNEL_IDX_REORG]->pGlobal(ocl_blocks(l.outputs))->pLocal(OCL_BLOCK);
+	m_OCLManager->m_OpenCLKernels[NN_KERNEL_IDX_REORG]->arg(0, l.outputs);
+	m_OCLManager->m_OpenCLKernels[NN_KERNEL_IDX_REORG]->arg(1, state.input_ocl);
+	m_OCLManager->m_OpenCLKernels[NN_KERNEL_IDX_REORG]->arg(2, l.w);
+	m_OCLManager->m_OpenCLKernels[NN_KERNEL_IDX_REORG]->arg(3, l.h);
+	m_OCLManager->m_OpenCLKernels[NN_KERNEL_IDX_REORG]->arg(4, l.c);
+	m_OCLManager->m_OpenCLKernels[NN_KERNEL_IDX_REORG]->arg(5, l.batch);
+	m_OCLManager->m_OpenCLKernels[NN_KERNEL_IDX_REORG]->arg(6, l.stride);
+	m_OCLManager->m_OpenCLKernels[NN_KERNEL_IDX_REORG]->arg(7, l.output_ocl);
+	m_OCLManager->m_OpenCLKernels[NN_KERNEL_IDX_REORG]->run(PROFILE_KERNELS, BLOCK_KERNEL_EXEC);
 
-	int stride = l.stride;
-	int b, i, j, k;
-	int out_c = c / (stride*stride);
-
-	// batch index
-	for (b = 0; b < batch; ++b) {
-		// channel index
-		for (k = 0; k < c; ++k) {
-			// y
-			for (j = 0; j < h; ++j) {
-				// x
-				for (i = 0; i < w; ++i) {
-					int in_index = i + w*(j + h*(k + c*b));
-					int c2 = k % out_c;
-					int offset = k / out_c;
-					int w2 = i*stride + offset % stride;
-					int h2 = j*stride + offset / stride;
-					int out_index = w2 + w*stride*(h2 + h*stride*(c2 + out_c*b));
-					out[in_index] = x[out_index];
-				}
-			}
-		}
-	}
 }
 
 
@@ -324,7 +303,7 @@ static void softmax_tree(float *input, int batch, int inputs, float temp, tree *
 
 
 // Region layer - just change places of array items, then do logistic_activate and softmax 
-void forward_region_layer_cpu(const layer l, network_state state)
+void forward_region_layer_opencl(const layer l, network_state state)
 {
 	int i, b;
 	int size = l.coords + l.classes + 1;	// 4 Coords(x,y,w,h) + Classes + 1 Probability-t0
@@ -405,15 +384,15 @@ void yolov2_forward_network_cpu(network net, network_state state)
 			//printf("\n MAXPOOL \t\t l.size = %d  \n", l.size);
 		}
 		else if (l.type == ROUTE) {
-			forward_route_layer_cpu(l, state);
+			forward_route_layer_opencl(l, state);
 			//printf("\n ROUTE \t\t\t l.n = %d  \n", l.n);
 		}
 		else if (l.type == REORG) {
-			forward_reorg_layer_cpu(l, state);
+			forward_reorg_layer_opencl(l, state);
 			//printf("\n REORG \n");
 		}
 		else if (l.type == REGION) {
-			forward_region_layer_cpu(l, state);
+			forward_region_layer_opencl(l, state);
 			//printf("\n REGION \n");
 		}
 		else {
