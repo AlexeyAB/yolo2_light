@@ -126,6 +126,7 @@
     <ClCompile Include="src\box.c" />
     <ClCompile Include="src\main.c" />
     <ClCompile Include="src\yolov2_forward_network.c" />
+    <ClCompile Include="src\yolov2_forward_network_quantized.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\additionally.h" />

@@ -366,7 +366,7 @@ void forward_region_layer_opencl(const layer l, network_state state)
 }
 
 
-void yolov2_forward_network_cpu(network net, network_state state)
+void yolov2_forward_network_opencl(network net, network_state state)
 {
 	state.workspace_ocl = net.workspace_ocl;
 	state.workspace = net.workspace;
@@ -418,7 +418,7 @@ float *network_predict_opencl(network net, float *input)
 	state.truth = 0;
 	state.train = 0;
 	state.delta = 0;
-	yolov2_forward_network_cpu(net, state);	// network on CPU
+	yolov2_forward_network_opencl(net, state);	// network on CPU
 
 	cl_int status = clReleaseMemObject(input_array);
 

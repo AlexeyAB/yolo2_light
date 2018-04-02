@@ -81,7 +81,7 @@ void draw_detections_cpu(image im, int num, float thresh, box *boxes, float **pr
 
 
 // Detect on Image: this function uses other functions not from this file
-void test_detector_cpu(char **names, char *cfgfile, char *weightfile, char *filename, float thresh)
+void test_detector_cpu(char **names, char *cfgfile, char *weightfile, char *filename, float thresh, int quantized)
 {
 	//image **alphabet = load_alphabet();			// image.c
 	image **alphabet = NULL;
@@ -124,7 +124,12 @@ void test_detector_cpu(char **names, char *cfgfile, char *weightfile, char *file
 #ifdef OPENCL
 		network_predict_opencl(net, X);
 #else
-		network_predict_cpu(net, X);
+		if (quantized) {
+			network_predict_quantized(net, X);	// quantized works only with Tiny-models
+		}
+		else {
+			network_predict_cpu(net, X);
+		}
 #endif
 #endif
 		printf("%s: Predicted in %f seconds.\n", input, (float)(clock() - time) / CLOCKS_PER_SEC); //sec(clock() - time));
@@ -309,7 +314,8 @@ static double get_wall_time()
 
 
 // Detect on Video: this function uses other functions not from this file
-void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const char *filename, char **names, int classes, int frame_skip, char *prefix)
+void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const char *filename, char **names, int classes, 
+	int frame_skip, char *prefix, int quantized)
 {
 	int delay = frame_skip;
 	demo_names = names;
@@ -407,7 +413,8 @@ void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const ch
 	}
 }
 #else
-void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const char *filename, char **names, int classes, int frame_skip, char *prefix)
+void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const char *filename, char **names, int classes, 
+	int frame_skip, char *prefix, int quantized)
 {
 	fprintf(stderr, "Demo needs OpenCV for webcam images.\n");
 }
@@ -420,6 +427,7 @@ void run_detector(int argc, char **argv)
 	char *prefix = find_char_arg(argc, argv, "-prefix", 0);
 	float thresh = find_float_arg(argc, argv, "-thresh", .24);
 	int cam_index = find_int_arg(argc, argv, "-c", 0);
+	int quantized = find_arg(argc, argv, "-quantized");
 	int frame_skip = find_int_arg(argc, argv, "-s", 0);
 	if (argc < 4) {
 		fprintf(stderr, "usage: %s %s [demo/test/] [cfg] [weights (optional)]\n", argv[0], argv[1]);
@@ -448,12 +456,12 @@ void run_detector(int argc, char **argv)
 	fclose(fp);
 	int classes = obj_count;
 
-	if (0 == strcmp(argv[2], "test")) test_detector_cpu(names, cfg, weights, filename, thresh);
+	if (0 == strcmp(argv[2], "test")) test_detector_cpu(names, cfg, weights, filename, thresh, quantized);
 	//else if (0 == strcmp(argv[2], "train")) train_detector(datacfg, cfg, weights, gpus, ngpus, clear);
 	//else if (0 == strcmp(argv[2], "valid")) validate_detector(datacfg, cfg, weights);
 	//else if (0 == strcmp(argv[2], "recall")) validate_detector_recall(datacfg, cfg, weights);
 	else if (0 == strcmp(argv[2], "demo")) {
-		demo(cfg, weights, thresh, cam_index, filename, names, classes, frame_skip, prefix);
+		demo(cfg, weights, thresh, cam_index, filename, names, classes, frame_skip, prefix, quantized);
 	}
 
 	int i;
