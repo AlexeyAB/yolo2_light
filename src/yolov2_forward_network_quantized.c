@@ -3,6 +3,10 @@
 
 //#define GEMMCONV
 
+#include "opencv2/highgui/highgui_c.h"
+#include "opencv2/core/core_c.h"
+#include "opencv2/core/version.hpp"
+
 // from: box.h
 typedef struct {
 	float x, y, w, h;
@@ -22,6 +26,80 @@ short int max_abs_short(short int src, short int max_val)
 }
 
 
+void draw_distribution(float *arr_ptr, size_t arr_size)
+{
+	int img_w = 1200, img_h = 800;
+	const int number_of_ranges = 32;
+	const float start_range = 1.F / 65536;
+	int *count = calloc(number_of_ranges, sizeof(int));
+	float min_val = 100, max_val = 0;
+
+	int i, j;
+	for (i = 0; i < arr_size; ++i) {
+		float w = arr_ptr[i];
+		if (fabs(w) < min_val) min_val = fabsf(w);
+		if (fabs(w) > max_val) max_val = fabsf(w);
+
+		float cur_range = start_range;
+		for (j = 0; j < number_of_ranges; ++j) {
+			if (cur_range <= w && w < (cur_range * 2))
+				count[j]++;// , printf("found \n");
+			cur_range *= 2;
+			//printf("%f, ", w);
+		}
+	}
+
+	int max_count_range = 0;
+	for (j = 0; j < number_of_ranges; ++j) {
+		count[j] = log2(count[j]);
+		if (max_count_range < count[j])
+			max_count_range = count[j];
+	}
+
+	cvNamedWindow("Wights", CV_WINDOW_NORMAL);
+	cvResizeWindow("Wights", img_w, img_h);
+
+	IplImage *img = cvCreateImage(cvSize(img_w, img_h), IPL_DEPTH_8U, 3);
+
+	if (max_count_range > 0) {
+		for (j = 0; j < number_of_ranges; ++j) {
+			//printf("count[j] = %d, max_count_range = %d, img_w = %d, img_h = %d, j = %d, number_of_ranges = %d \n",
+			//	count[j], max_count_range, img_w, img_h, j, number_of_ranges);
+			CvPoint pt1, pt2;
+			pt1.x = j*img_w / number_of_ranges;
+			pt2.x = (j + 1)*img_w / number_of_ranges;
+			pt1.y = img_h;
+			pt2.y = img_h - img_h*count[j] / max_count_range;
+			//printf("pt1.x = %d, pt1.y = %d, pt2.x = %d, pt2.y = %d \n", pt1.x, pt1.y, pt2.x, pt2.y);
+
+			//if(pt2.y < pt1.y)
+			cvRectangle(img, pt1, pt2, CV_RGB(128, 64, 32), CV_FILLED, 8, 0);
+			cvRectangle(img, pt1, pt2, CV_RGB(32, 32, 32), 1, 8, 0);
+		}
+	}
+
+	char buff[256];
+	sprintf(buff, "[%g - %g]", min_val, max_val);
+	printf("[%g - %g]", min_val, max_val);
+	CvFont font;
+	cvInitFont(&font, CV_FONT_HERSHEY_COMPLEX, 1, 1, 0, 2, 8);
+	cvPutText(img, buff, cvPoint(100, 50), &font, CV_RGB(32, 64, 128));
+
+	float cur_range = start_range;
+	cvInitFont(&font, CV_FONT_HERSHEY_COMPLEX, 0.5, 0.5, 0, 1, 8);
+	for (j = 0; j < number_of_ranges; ++j) {
+		CvPoint pt_text = cvPoint(j*img_w / number_of_ranges, img_h - 50);
+		int lg = log2(cur_range);
+		sprintf(buff, "%d", lg);
+		cvPutText(img, buff, pt_text, &font, CV_RGB(32, 64, 128));
+		cur_range *= 2;
+	}
+	cvPutText(img, "X and Y are log2", cvPoint(img_w / 2 - 100, img_h - 10), &font, CV_RGB(32, 64, 128));
+
+	cvShowImage("Wights", img);
+	cvWaitKey(0);
+}
+
 // 4 layers in 1: convolution, batch-normalization, BIAS and activation
 void forward_convolutional_layer_q(layer l, network_state state)
 {
@@ -29,6 +107,8 @@ void forward_convolutional_layer_q(layer l, network_state state)
 	int out_h = (l.h + 2 * l.pad - l.size) / l.stride + 1;	// output_height=input_height for stride=1 and pad=1 
 	int out_w = (l.w + 2 * l.pad - l.size) / l.stride + 1;	// output_width=input_width for stride=1 and pad=1 
 	int i, f, j;
+	int const out_size = out_h*out_w;
+	size_t const weights_size = l.size*l.size*l.c*l.n;
 
 	// fill zero (ALPHA)
 	for (i = 0; i < l.outputs; ++i) l.output[i] = 0;
@@ -41,11 +121,33 @@ void forward_convolutional_layer_q(layer l, network_state state)
 
 //#define MAX_VAL (65535*16)
 //#define MULT 256.F
-#define MAX_VAL (65535)
+	
+	//draw_distribution(l.weights, weights_size);
+	draw_distribution(state.input, l.inputs);
+
+	
+#define W_MAX_VAL (256*128 - 1)	// 31-bit (32)
+#define I_MAX_VAL (256*128 - 1)	// 31-bit (32)
+#define R_MAX_VAL (256*128 - 1)	// 31-bit (32)
 #define W_MULT (256.F*4)
 #define I_MULT (16.F)
 #define R_MULT (64)
-	typedef short int conv_t;
+	typedef int16_t conv_t;
+	typedef int16_t input_t;
+	
+
+	// for int8 required 7-bit (1-bit for sign)
+
+	/*
+#define W_MAX_VAL (256*16 - 1)	// 12-bit (13)
+#define I_MAX_VAL (256/2 - 1)	// 7-bit (8)
+#define R_MAX_VAL (256*4 - 1)	// 10-bit (11)
+#define W_MULT (256.F/1)
+#define I_MULT (256.F/16)
+#define R_MULT (256.F/8)
+	typedef int16_t conv_t;
+	typedef int8_t input_t;
+	*/
 	
 	// Tiny-Yolo works successfully:
 	// int - with MULT=[256,512,1024,2048,4096] without MAX_VAL
@@ -55,26 +157,54 @@ void forward_convolutional_layer_q(layer l, network_state state)
 	// short - with W_MULT=512, I_MULT=16, R_MULT=16 with MAX_VAL=65535 and higher
 	// short - with W_MULT=2048, I_MULT=16, R_MULT=64 with MAX_VAL=65535 and higher
 	// short VOC+COCO - with W_MULT=1024, I_MULT=16, R_MULT=64 with MAX_VAL=65535 and higher
-	size_t const weights_size = l.size*l.size*l.c*l.n;
-	conv_t *weights_q = calloc(weights_size, sizeof(int));	// l.weights
-	conv_t *input_q = calloc(l.inputs, sizeof(int));	// state.input
-	//conv_t *output_q = calloc(l.outputs, sizeof(int));	// l.output
-	conv_t *output_q = calloc(l.outputs, sizeof(int));	// l.output
+	// FUSED short VOC+COCO - with W_MULT=256, I_MULT=256, R_MULT=128 with MAX_VAL=4096 and higher
+	// FUSED short VOC+COCO - with W_MULT=256, I_MULT=256, R_MULT=256 with W_MAX_VAL=I_MAX_VAL=4096, R_MAX_VAL=1024 and higher
+	// FUSED short VOC+COCO - with W_MULT=256, I_MULT=64, R_MULT=256 with W_MAX_VAL=4096, I_MAX_VAL=1024, R_MAX_VAL=1024 and higher
+	// FUSED short VOC+COCO - with W_MULT=256, I_MULT=16, R_MULT=32 with W_MAX_VAL=4096, I_MAX_VAL=256, R_MAX_VAL=1024 and higher
+
+	conv_t *weights_q = calloc(weights_size, sizeof(conv_t));	// l.weights
+	input_t *input_q = calloc(l.inputs, sizeof(conv_t));	// state.input
+	//int8_t *input_q = calloc(l.inputs, sizeof(conv_t));	// state.input
+	conv_t *output_q = calloc(l.outputs, sizeof(conv_t));	// l.output
+
+	float *biases_q = calloc(l.n, sizeof(float));	// l.biases
 
 
+    //l.output[index] = ((l.output[index] - l.rolling_mean[f]) / (sqrtf(l.rolling_variance[f]) + .000001f)) * l.scales[i];
+	//l.output[i*out_size + j] += l.biases[i];
 
-	//for (i = 0; i < weights_size; ++i) weights_q[i] = l.weights[i] * MULT;
-	//for (i = 0; i < l.inputs; ++i) input_q[i] = state.input[i] * MULT;
-
-	for (i = 0; i < weights_size; ++i) {
-		float w = l.weights[i] * W_MULT;	// can be multiplied more
-		weights_q[i] = w;// (w > MAX_VAL) ? MAX_VAL : w;
-		//if (abs(weights_q[i]) > 65535) printf(" abs(weights_q[i]) > 65535 \n");
+	if (l.batch_normalize) {
+		for (f = 0; f < l.n; ++f)
+		{
+			float b = l.biases[f] - l.scales[f] * l.rolling_mean[f] / (sqrtf(l.rolling_variance[f]) + .000001f);
+			biases_q[f] = b;
+			const size_t filter_size = l.size*l.size*l.c;
+			for (i = 0; i < filter_size; ++i) {
+				int w_index = f*filter_size + i;
+				float w = l.weights[w_index];
+				w = w * l.scales[f] / (sqrtf(l.rolling_variance[f]) + .000001f);
+				w = w * W_MULT;
+				//weights_q[w_index] = w;
+				weights_q[w_index] = (w > W_MAX_VAL) ? W_MAX_VAL : w;
+			}
+		}
 	}
+	else {
+		for (f = 0; f < l.n; ++f) biases_q[f] = l.biases[f];
+		
+		for (i = 0; i < weights_size; ++i) {
+			float w = l.weights[i] * W_MULT;	// can be multiplied more
+			weights_q[i] = (w > W_MAX_VAL) ? W_MAX_VAL : w;
+			//if (fabs(weights_q[i]) > 65535) printf(" fabs(weights_q[i]) > 65535 \n");
+		}
+	}
+
+
 	for (i = 0; i < l.inputs; ++i){
-		float src = state.input[i] * I_MULT;	// can't be multiplied more
-		input_q[i] = src;// (src > MAX_VAL) ? MAX_VAL : src;
-		//if (abs(input_q[i]) > 65535) printf(" abs(input_q[i]) > 65535 \n");
+		int32_t src = state.input[i] * I_MULT;	// can't be multiplied more
+		input_t tmp = (src > I_MAX_VAL) ? I_MAX_VAL : src;
+		input_q[i] = tmp;
+		//if (fabs(input_q[i]) > 127) printf(" fabs(input_q[i]) > 127 \n");
 	}
 
 
@@ -85,6 +215,9 @@ void forward_convolutional_layer_q(layer l, network_state state)
 	// filter index 
 	#pragma omp parallel for  	// "omp parallel for" - automatic parallelization of loop by using OpenMP
 	for (fil = 0; fil < l.n; ++fil) {
+		for (j = 0; j < out_size; ++j)
+			output_q[fil*out_size + j] = biases_q[fil] * (W_MULT*I_MULT / R_MULT);
+		
 		int chan, y, x, f_y, f_x;
 		// channel index
 		for (chan = 0; chan < l.c; ++chan)
@@ -125,10 +258,10 @@ void forward_convolutional_layer_q(layer l, network_state state)
 					
 					//l.output[output_index] += sum;
 					//output_q[output_index] += sum;
-					//output_q[output_index] += max_abs(sum, MAX_VAL);
-					//output_q[output_index] += max_abs(sum / R_MULT, MAX_VAL);
-					output_q[output_index] += sum / R_MULT;
-					//if (abs(output_q[output_index]) > 65535) printf(" abs(output_q[output_index]) > 65535 \n");
+					//output_q[output_index] += max_abs(sum, R_MAX_VAL);
+					output_q[output_index] += max_abs(sum / R_MULT, R_MAX_VAL);
+					//output_q[output_index] += sum / R_MULT;
+					//if (fabs(output_q[output_index]) > 65535) printf(" fabs(output_q[output_index]) > 65535 \n");
 				}
 	}
 #else
@@ -152,10 +285,9 @@ void forward_convolutional_layer_q(layer l, network_state state)
 
 	
 	//for (i = 0; i < l.outputs; ++i) l.output[i] = output_q[i] / (W_MULT*I_MULT);
-	for (i = 0; i < l.outputs; ++i) l.output[i] = output_q[i] / (W_MULT*I_MULT/ R_MULT);
-	
-	int const out_size = out_h*out_w;
+	//for (i = 0; i < l.outputs; ++i) l.output[i] = output_q[i] / (W_MULT*I_MULT/ R_MULT);
 
+/*
 	// 2. Batch normalization
 	if (l.batch_normalize) {
 		for (f = 0; f < l.out_c; ++f) {
@@ -175,24 +307,47 @@ void forward_convolutional_layer_q(layer l, network_state state)
 
 
 	// 3. Add BIAS
-	//if (l.batch_normalize)
+	//if (!l.batch_normalize)
 	for (i = 0; i < l.n; ++i) {
 		for (j = 0; j < out_size; ++j) {
 			l.output[i*out_size + j] += l.biases[i];
 		}
 	}
+	*/
+
+	/*
+	// 4. Activation function (LEAKY or LINEAR)
+	if (l.activation == LEAKY) {
+	for (i = 0; i < l.n*out_size; ++i) {
+	l.output[i] = leaky_activate(l.output[i]);
+	}
+	}
+	*/
+	
+	/*
+	// 3. Add BIAS (fused)
+	for (i = 0; i < l.n; ++i) {
+		for (j = 0; j < out_size; ++j) {
+			output_q[i*out_size + j] += biases_q[i] * (W_MULT*I_MULT / R_MULT);
+		}
+	}
+	*/
 
 	// 4. Activation function (LEAKY or LINEAR)
 	if (l.activation == LEAKY) {
 		for (i = 0; i < l.n*out_size; ++i) {
-			l.output[i] = leaky_activate(l.output[i]);
+			output_q[i] = (output_q[i]>0) ? output_q[i] : 0.1F * output_q[i]; //leaky_activate(l.output[i]);
 		}
-	}
+	}	
+	
+	for (i = 0; i < l.outputs; ++i) l.output[i] = output_q[i] / (W_MULT*I_MULT / R_MULT);
+
 
 
 	free(weights_q);
 	free(input_q);
 	free(output_q);
+	free(biases_q);
 }
 
 

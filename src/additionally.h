@@ -372,6 +372,7 @@ struct layer {
 	int   * input_sizes;
 	float * delta;
 	float * output;
+	int8_t * output_int8;
 	float * squared;
 	float * norms;
 
