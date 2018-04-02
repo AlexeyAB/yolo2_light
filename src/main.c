@@ -186,7 +186,7 @@ void draw_detections_cv_cpu(IplImage* show_img, int num, float thresh, box *boxe
 		float prob = probs[i][class];
 		if (prob > thresh) {
 
-			int width = show_img->height * .012;
+			int width = show_img->height * 0.003;// .012;
 
 			if (0) {
 				width = powf(prob, 1. / 2.) * 10 + 1;
