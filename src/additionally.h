@@ -366,6 +366,8 @@ struct layer {
 
 	float *weights;
 	float *weight_updates;
+	float weights_quant_multipler;
+	float input_quant_multipler;
 
 	float *col_image;
 	int   * input_layers;
@@ -710,6 +712,12 @@ float *network_predict_cpu(network net, float *input);
 
 // quantizized
 float *network_predict_quantized(network net, float *input);
+
+// fuse convolutional and batch_norm weights into one convolutional-layer
+void yolov2_fuse_conv_batchnorm(network net);
+
+// get multiplers for convolutional weights for quantinization
+void get_conv_weight_optimal_multipliers(network net);
 
 // -------------- yolov2_forward_network_gpu.c --------------------
 

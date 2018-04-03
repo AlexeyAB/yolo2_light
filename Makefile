@@ -59,7 +59,7 @@ CFLAGS+= -DCUDNN -I/usr/local/cudnn/include
 LDFLAGS+= -L/usr/local/cudnn/lib64 -lcudnn
 endif
 
-OBJ=main.o additionally.o box.o yolov2_forward_network.o
+OBJ=main.o additionally.o box.o yolov2_forward_network.o yolov2_forward_network_quantized.o
 ifeq ($(GPU), 1) 
 LDFLAGS+= -lstdc++ 
 OBJ+=gpu.o yolov2_forward_network_gpu.o 

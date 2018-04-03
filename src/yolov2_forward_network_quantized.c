@@ -25,29 +25,73 @@ short int max_abs_short(short int src, short int max_val)
 	return src;
 }
 
-
-void draw_distribution(float *arr_ptr, size_t arr_size)
+int * get_distribution(float *arr_ptr, int arr_size, int number_of_ranges, float start_range)
 {
-	int img_w = 1200, img_h = 800;
-	const int number_of_ranges = 32;
-	const float start_range = 1.F / 65536;
+	//const int number_of_ranges = 32;
+	//const float start_range = 1.F / 65536;
 	int *count = calloc(number_of_ranges, sizeof(int));
-	float min_val = 100, max_val = 0;
+	float min_val = 10000, max_val = 0;
 
 	int i, j;
 	for (i = 0; i < arr_size; ++i) {
 		float w = arr_ptr[i];
-		if (fabs(w) < min_val) min_val = fabsf(w);
-		if (fabs(w) > max_val) max_val = fabsf(w);
 
 		float cur_range = start_range;
 		for (j = 0; j < number_of_ranges; ++j) {
-			if (cur_range <= w && w < (cur_range * 2))
+			if (fabs(cur_range) <= w && w < fabs(cur_range * 2))
 				count[j]++;// , printf("found \n");
 			cur_range *= 2;
 			//printf("%f, ", w);
 		}
 	}
+
+	return count;
+}
+
+
+float get_multiplier(float *arr_ptr, int arr_size, int bits_length)
+{
+	const int number_of_ranges = 32;
+	const float start_range = 1.F / 65536;
+
+	int i, j;
+	int *count = get_distribution(arr_ptr, arr_size, number_of_ranges, start_range);
+
+	int max_count_range = 0;
+	int index_max_count = 0;
+	for (j = 0; j < number_of_ranges; ++j) {
+		int counter = 0;
+		for (i = j; i < (j + bits_length) && i < number_of_ranges; ++i)
+		{
+			counter += count[i];
+			//counter += log2(count[i]);
+		}
+		if (max_count_range < counter) {
+			max_count_range = counter;
+			index_max_count = j;
+		}
+	}
+	//index_max_count = index_max_count + 2;	// optimal shift multipler
+	float multiplier = 1 / (start_range * powf(2., (float)index_max_count));
+	//printf(" max_count_range = %d, index_max_count = %d, multiplier = %g \n", 
+	//	max_count_range, index_max_count, multiplier);
+	free(count);
+	return multiplier;
+}
+
+
+void draw_distribution(float *arr_ptr, int arr_size, char *name)
+{
+	int img_w = 1200, img_h = 800;
+	const int number_of_ranges = 32;
+	const float start_range = 1.F / 65536;
+	//int *count = calloc(number_of_ranges, sizeof(int));
+	//float min_val = 100, max_val = 0;
+
+	int i, j;
+	int *count = get_distribution(arr_ptr, arr_size, number_of_ranges, start_range);
+
+	float multiplier = get_multiplier(arr_ptr, arr_size, 8);
 
 	int max_count_range = 0;
 	for (j = 0; j < number_of_ranges; ++j) {
@@ -78,12 +122,20 @@ void draw_distribution(float *arr_ptr, size_t arr_size)
 		}
 	}
 
+	int index_multiplier = log2(1 / (multiplier*start_range));
+	int x_coord_multiplier = index_multiplier*img_w / number_of_ranges;
+	cvLine(img, cvPoint(x_coord_multiplier, 0), cvPoint(x_coord_multiplier, img_h), CV_RGB(255, 32, 32), 1, 8, 0);
+
 	char buff[256];
-	sprintf(buff, "[%g - %g]", min_val, max_val);
-	printf("[%g - %g]", min_val, max_val);
+	//sprintf(buff, "[%g - %g]", min_val, max_val);
+	sprintf(buff, "optimal multiplier = %g", multiplier);
+	//printf("[%g - %g]", min_val, max_val);
 	CvFont font;
 	cvInitFont(&font, CV_FONT_HERSHEY_COMPLEX, 1, 1, 0, 2, 8);
 	cvPutText(img, buff, cvPoint(100, 50), &font, CV_RGB(32, 64, 128));
+	
+	if(name)
+		cvPutText(img, name, cvPoint(0, 50), &font, CV_RGB(32, 64, 128));
 
 	float cur_range = start_range;
 	cvInitFont(&font, CV_FONT_HERSHEY_COMPLEX, 0.5, 0.5, 0, 1, 8);
@@ -95,9 +147,11 @@ void draw_distribution(float *arr_ptr, size_t arr_size)
 		cur_range *= 2;
 	}
 	cvPutText(img, "X and Y are log2", cvPoint(img_w / 2 - 100, img_h - 10), &font, CV_RGB(32, 64, 128));
-
+	
 	cvShowImage("Wights", img);
 	cvWaitKey(0);
+
+	free(count);
 }
 
 // 4 layers in 1: convolution, batch-normalization, BIAS and activation
@@ -122,19 +176,51 @@ void forward_convolutional_layer_q(layer l, network_state state)
 //#define MAX_VAL (65535*16)
 //#define MULT 256.F
 	
-	//draw_distribution(l.weights, weights_size);
-	draw_distribution(state.input, l.inputs);
+	/*
+	for (f = 0; f < l.n; ++f)
+	{
+		const int filter_size = l.size*l.size*l.c;
+		int w_index = f*filter_size;
+		char buff[256];
+		sprintf(buff, "%d", f);
+		//printf("\n f = %d, filter_size = %d, w_index = %d, weights_size = %d, l.weights + w_index = %p \n",
+		//	f, filter_size, w_index, weights_size, l.weights + w_index);
+		draw_distribution(&l.weights[w_index], filter_size, buff);
+	}
+	*/
 
-	
-#define W_MAX_VAL (256*128 - 1)	// 31-bit (32)
-#define I_MAX_VAL (256*128 - 1)	// 31-bit (32)
+	//draw_distribution(l.weights, weights_size, NULL);
+	//draw_distribution(state.input, l.inputs, NULL);
+
+/*	
+#define W_MAX_VAL (256/2 - 1)	// 31-bit (32)
+#define I_MAX_VAL (256/2 - 1)	// 31-bit (32)
 #define R_MAX_VAL (256*128 - 1)	// 31-bit (32)
-#define W_MULT (256.F*4)
-#define I_MULT (16.F)
-#define R_MULT (64)
+//#define W_MULT (256.F*4)
+//#define I_MULT (16.F)
+#define I_MULT (l.input_quant_multipler)
+#define R_MULT (32)	// 4 - 32
+
 	typedef int16_t conv_t;
-	typedef int16_t input_t;
-	
+	typedef int8_t weight_t;
+	typedef int8_t input_t;
+		
+	l.weights_quant_multipler /= 4;	// (int8 = optimal 4) (int16 = optimal 32) 8 - 32
+*/
+
+#define W_MAX_VAL (256/2 - 1)	// 31-bit (32)
+#define I_MAX_VAL (256/2 - 1)	// 31-bit (32)
+#define R_MAX_VAL (256*128 - 1)	// 31-bit (32)
+//#define W_MULT (256.F*4)
+//#define I_MULT (16.F)
+#define I_MULT (l.input_quant_multipler)
+#define R_MULT (32)	// 4 - 32
+
+	typedef int16_t conv_t;
+	typedef int8_t weight_t;
+	typedef int8_t input_t;
+
+	l.weights_quant_multipler /= 4;	// (int8 = optimal 4) (int16 = optimal 32) 8 - 32
 
 	// for int8 required 7-bit (1-bit for sign)
 
@@ -162,9 +248,8 @@ void forward_convolutional_layer_q(layer l, network_state state)
 	// FUSED short VOC+COCO - with W_MULT=256, I_MULT=64, R_MULT=256 with W_MAX_VAL=4096, I_MAX_VAL=1024, R_MAX_VAL=1024 and higher
 	// FUSED short VOC+COCO - with W_MULT=256, I_MULT=16, R_MULT=32 with W_MAX_VAL=4096, I_MAX_VAL=256, R_MAX_VAL=1024 and higher
 
-	conv_t *weights_q = calloc(weights_size, sizeof(conv_t));	// l.weights
+	weight_t *weights_q = calloc(weights_size, sizeof(conv_t));	// l.weights
 	input_t *input_q = calloc(l.inputs, sizeof(conv_t));	// state.input
-	//int8_t *input_q = calloc(l.inputs, sizeof(conv_t));	// state.input
 	conv_t *output_q = calloc(l.outputs, sizeof(conv_t));	// l.output
 
 	float *biases_q = calloc(l.n, sizeof(float));	// l.biases
@@ -173,41 +258,23 @@ void forward_convolutional_layer_q(layer l, network_state state)
     //l.output[index] = ((l.output[index] - l.rolling_mean[f]) / (sqrtf(l.rolling_variance[f]) + .000001f)) * l.scales[i];
 	//l.output[i*out_size + j] += l.biases[i];
 
-	if (l.batch_normalize) {
-		for (f = 0; f < l.n; ++f)
-		{
-			float b = l.biases[f] - l.scales[f] * l.rolling_mean[f] / (sqrtf(l.rolling_variance[f]) + .000001f);
-			biases_q[f] = b;
-			const size_t filter_size = l.size*l.size*l.c;
-			for (i = 0; i < filter_size; ++i) {
-				int w_index = f*filter_size + i;
-				float w = l.weights[w_index];
-				w = w * l.scales[f] / (sqrtf(l.rolling_variance[f]) + .000001f);
-				w = w * W_MULT;
-				//weights_q[w_index] = w;
-				weights_q[w_index] = (w > W_MAX_VAL) ? W_MAX_VAL : w;
-			}
-		}
-	}
-	else {
-		for (f = 0; f < l.n; ++f) biases_q[f] = l.biases[f];
+	for (f = 0; f < l.n; ++f) biases_q[f] = l.biases[f];
 		
-		for (i = 0; i < weights_size; ++i) {
-			float w = l.weights[i] * W_MULT;	// can be multiplied more
-			weights_q[i] = (w > W_MAX_VAL) ? W_MAX_VAL : w;
-			//if (fabs(weights_q[i]) > 65535) printf(" fabs(weights_q[i]) > 65535 \n");
-		}
+	for (i = 0; i < weights_size; ++i) {
+		//float w = l.weights[i] * W_MULT;	// can be multiplied more
+		float w = l.weights[i] * l.weights_quant_multipler;
+		weights_q[i] = max_abs(w, W_MAX_VAL);
+		//if (fabs(weights_q[i]) > 65535) printf(" fabs(weights_q[i]) > 65535 \n");
 	}
-
 
 	for (i = 0; i < l.inputs; ++i){
 		int32_t src = state.input[i] * I_MULT;	// can't be multiplied more
-		input_t tmp = (src > I_MAX_VAL) ? I_MAX_VAL : src;
-		input_q[i] = tmp;
+		input_q[i] = max_abs(src, I_MAX_VAL);
 		//if (fabs(input_q[i]) > 127) printf(" fabs(input_q[i]) > 127 \n");
 	}
 
-
+	//for (i = 0; i < l.inputs; ++i) state.input[i] = input_q[i];
+	//draw_distribution(state.input, l.inputs, NULL);
 
 	// 1. Convolution !!!
 #ifndef GEMMCONV
@@ -216,7 +283,8 @@ void forward_convolutional_layer_q(layer l, network_state state)
 	#pragma omp parallel for  	// "omp parallel for" - automatic parallelization of loop by using OpenMP
 	for (fil = 0; fil < l.n; ++fil) {
 		for (j = 0; j < out_size; ++j)
-			output_q[fil*out_size + j] = biases_q[fil] * (W_MULT*I_MULT / R_MULT);
+			output_q[fil*out_size + j] = biases_q[fil] * (l.weights_quant_multipler*I_MULT / R_MULT);
+			//output_q[fil*out_size + j] = biases_q[fil] * (W_MULT*I_MULT / R_MULT);
 		
 		int chan, y, x, f_y, f_x;
 		// channel index
@@ -231,7 +299,8 @@ void forward_convolutional_layer_q(layer l, network_state state)
 					int const input_pre_index = chan*l.w*l.h;
 					//float sum = 0;
 
-					int sum = 0;
+					//int16_t sum = 0;
+					int32_t sum = 0;
 
 					// filter - y
 					for (f_y = 0; f_y < l.size; ++f_y)
@@ -247,8 +316,8 @@ void forward_convolutional_layer_q(layer l, network_state state)
 							int weights_index = weights_pre_index + f_y*l.size + f_x;
 
 							//sum += state.input[input_index] * l.weights[weights_index];
-							// int32 = int16 * int16;
-							sum += input_q[input_index] * weights_q[weights_index];
+							// int16 += int8 * int8;
+							sum += (int16_t)input_q[input_index] * (int16_t)weights_q[weights_index];
 						}
 					}
 					// l.output[filters][width][height] += 
@@ -283,55 +352,6 @@ void forward_convolutional_layer_q(layer l, network_state state)
 	}
 #endif
 
-	
-	//for (i = 0; i < l.outputs; ++i) l.output[i] = output_q[i] / (W_MULT*I_MULT);
-	//for (i = 0; i < l.outputs; ++i) l.output[i] = output_q[i] / (W_MULT*I_MULT/ R_MULT);
-
-/*
-	// 2. Batch normalization
-	if (l.batch_normalize) {
-		for (f = 0; f < l.out_c; ++f) {
-			for (i = 0; i < out_size; ++i) {
-				int index = f*out_size + i;
-				l.output[index] = (l.output[index] - l.rolling_mean[f]) / (sqrtf(l.rolling_variance[f]) + .000001f);
-			}
-		}
-
-		// scale_bias
-		for (i = 0; i < l.out_c; ++i) {
-			for (j = 0; j < out_size; ++j) {
-				l.output[i*out_size + j] *= l.scales[i];
-			}
-		}
-	}
-
-
-	// 3. Add BIAS
-	//if (!l.batch_normalize)
-	for (i = 0; i < l.n; ++i) {
-		for (j = 0; j < out_size; ++j) {
-			l.output[i*out_size + j] += l.biases[i];
-		}
-	}
-	*/
-
-	/*
-	// 4. Activation function (LEAKY or LINEAR)
-	if (l.activation == LEAKY) {
-	for (i = 0; i < l.n*out_size; ++i) {
-	l.output[i] = leaky_activate(l.output[i]);
-	}
-	}
-	*/
-	
-	/*
-	// 3. Add BIAS (fused)
-	for (i = 0; i < l.n; ++i) {
-		for (j = 0; j < out_size; ++j) {
-			output_q[i*out_size + j] += biases_q[i] * (W_MULT*I_MULT / R_MULT);
-		}
-	}
-	*/
 
 	// 4. Activation function (LEAKY or LINEAR)
 	if (l.activation == LEAKY) {
@@ -340,7 +360,8 @@ void forward_convolutional_layer_q(layer l, network_state state)
 		}
 	}	
 	
-	for (i = 0; i < l.outputs; ++i) l.output[i] = output_q[i] / (W_MULT*I_MULT / R_MULT);
+	//for (i = 0; i < l.outputs; ++i) l.output[i] = output_q[i] / (W_MULT*I_MULT / R_MULT);
+	for (i = 0; i < l.outputs; ++i) l.output[i] = output_q[i] / (l.weights_quant_multipler*I_MULT / R_MULT);
 
 
 
@@ -695,3 +716,94 @@ void get_region_boxes_q(layer l, int w, int h, float thresh, float **probs, box 
 	}
 }
 
+
+// fuse convolutional and batch_norm weights into one convolutional-layer
+void yolov2_fuse_conv_batchnorm(network net)
+{
+	int j;
+	for (j = 0; j < net.n; ++j) {
+		layer *l = &net.layers[j];
+
+		if (l->type == CONVOLUTIONAL) {
+			printf(" Fuse Convolutional layer \t\t l->size = %d  \n", l->size);
+
+			if (l->batch_normalize) {
+				int f;
+				for (f = 0; f < l->n; ++f)
+				{
+					l->biases[f] = l->biases[f] - l->scales[f] * l->rolling_mean[f] / (sqrtf(l->rolling_variance[f]) + .000001f);
+
+					const size_t filter_size = l->size*l->size*l->c;
+					int i;
+					for (i = 0; i < filter_size; ++i) {
+						int w_index = f*filter_size + i;
+
+						l->weights[w_index] = l->weights[w_index] * l->scales[f] / (sqrtf(l->rolling_variance[f]) + .000001f);
+					}
+				}
+
+				l->batch_normalize = 0;
+#ifdef GPU
+				if (gpu_index >= 0) {
+					push_convolutional_layer(l);
+				}
+#endif
+
+#ifdef OPENCL
+				//if (gpu_index >= 0) {
+				ocl_push_convolutional_layer(l);
+				//}
+#endif
+			}
+		}
+		else {
+			printf(" Skip layer: %d \n", l->type);
+		}
+	}
+}
+
+// get multiplers for convolutional weights for quantinization
+void get_conv_weight_optimal_multipliers(network net)
+{
+	//float input_mult[] = { 16, 16, 16, 16, 16, 16, 16, 16, 16 };
+	//float input_mult[] = { 127, 2, 16, 16, 16, 32, 32, 16, 32 };
+	//float input_mult[] = { 127, 2, 32, 32, 32, 32, 32, 32, 32 };
+	//float input_mult[] = { 127, 2, 16, 16, 16, 16, 16, 16, 16 };	// good
+
+	//float input_mult[] = { 32, 4, 16, 16, 16, 16, 16, 16, 16 };
+	//float input_mult[] = { 128, 4, 32, 32, 32, 64, 64, 32, 64 };
+
+	// full
+	//float input_mult[] = { 256, 4,32,64,32,32,32,32,32,64,64,64,64,64,128,64,128,128,64,128,64,128,128 };	// divided 4 - full works
+	int couter = 0;
+
+	int j;
+	for (j = 0; j < net.n; ++j) {
+		layer *l = &net.layers[j];
+
+		if (l->type == CONVOLUTIONAL) {
+			size_t const weights_size = l->size*l->size*l->c*l->n;
+
+			float multiplier = get_multiplier(l->weights, weights_size, 8);
+			l->weights_quant_multipler = multiplier;
+			
+			//l->input_quant_multipler = input_mult[couter++];
+
+			
+			// tiny
+			if (couter == 0) l->input_quant_multipler = 128;
+			else if(couter == 1) l->input_quant_multipler = 2;
+			else  l->input_quant_multipler = 16;
+			++couter;
+			
+			printf(" Get optimal multiplers for Input and Conv-weights for quantinization %g, input %g \n", 
+				l->weights_quant_multipler, l->input_quant_multipler);
+		}
+		else {
+			printf(" Skip layer: %d \n", l->type);
+		}
+	}
+
+
+
+}

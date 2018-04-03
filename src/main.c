@@ -91,6 +91,8 @@ void test_detector_cpu(char **names, char *cfgfile, char *weightfile, char *file
 	}
 	set_batch_network(&net, 1);					// network.c
 	srand(2222222);
+	yolov2_fuse_conv_batchnorm(net);
+	if (quantized) get_conv_weight_optimal_multipliers(net);
 	clock_t time;
 	char buff[256];
 	char *input = buff;
@@ -126,6 +128,7 @@ void test_detector_cpu(char **names, char *cfgfile, char *weightfile, char *file
 #else
 		if (quantized) {
 			network_predict_quantized(net, X);	// quantized works only with Tiny-models
+			nms = 0.2;
 		}
 		else {
 			network_predict_cpu(net, X);
@@ -159,6 +162,7 @@ void test_detector_cpu(char **names, char *cfgfile, char *weightfile, char *file
 #ifdef OPENCV
 static char **demo_names;
 static int demo_classes;
+static int demo_quantized;
 
 static float **probs;
 static box *boxes;
@@ -287,7 +291,13 @@ static void *detect_in_thread(void *ptr)
 #ifdef OPENCL
 	network_predict_opencl(net, X);
 #else
-	network_predict_cpu(net, X);
+	if (demo_quantized) {
+		network_predict_quantized(net, X);	// quantized works only with Tiny-models
+		nms = 0.2;
+	}
+	else {
+		network_predict_cpu(net, X);
+	}
 #endif
 #endif
 
@@ -328,7 +338,11 @@ void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const ch
 		load_weights_upto_cpu(&net, weightfile, net.n);
 	}
 	set_batch_network(&net, 1);
-
+	yolov2_fuse_conv_batchnorm(net);
+	if (quantized) {
+		demo_quantized = 1;
+		get_conv_weight_optimal_multipliers(net);
+	}
 	srand(2222222);
 
 	if (filename) {
