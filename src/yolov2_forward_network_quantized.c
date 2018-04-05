@@ -1,7 +1,7 @@
 #include "additionally.h"	// some definitions from: im2col.h, blas.h, list.h, utils.h, activations.h, tree.h, layer.h, network.h
 							// softmax_layer.h, reorg_layer.h, route_layer.h, region_layer.h, maxpool_layer.h, convolutional_layer.h
 
-//#define GEMMCONV
+#define GEMMCONV
 
 #include "opencv2/highgui/highgui_c.h"
 #include "opencv2/core/core_c.h"
@@ -154,6 +154,69 @@ void draw_distribution(float *arr_ptr, int arr_size, char *name)
 	free(count);
 }
 
+// im2col.c
+int8_t im2col_get_pixel_int8(int8_t *im, int height, int width, int channels,
+	int row, int col, int channel, int pad)
+{
+	row -= pad;
+	col -= pad;
+
+	if (row < 0 || col < 0 ||
+		row >= height || col >= width) return 0;
+	return im[col + width*(row + height*channel)];
+}
+
+// im2col.c
+//From Berkeley Vision's Caffe!
+//https://github.com/BVLC/caffe/blob/master/LICENSE
+void im2col_cpu_int8(int8_t* data_im,
+	int channels, int height, int width,
+	int ksize, int stride, int pad, int8_t* data_col)
+{
+	int c, h, w;
+	int height_col = (height + 2 * pad - ksize) / stride + 1;
+	int width_col = (width + 2 * pad - ksize) / stride + 1;
+
+	int channels_col = channels * ksize * ksize;
+	for (c = 0; c < channels_col; ++c) {
+		int w_offset = c % ksize;
+		int h_offset = (c / ksize) % ksize;
+		int c_im = c / ksize / ksize;
+		for (h = 0; h < height_col; ++h) {
+			for (w = 0; w < width_col; ++w) {
+				int im_row = h_offset + h * stride;
+				int im_col = w_offset + w * stride;
+				int col_index = (c * height_col + h) * width_col + w;
+				data_col[col_index] = im2col_get_pixel_int8(data_im, height, width, channels,
+					im_row, im_col, c_im, pad);
+			}
+		}
+	}
+}
+
+
+
+void gemm_nn_int8(int M, int N, int K, int8_t ALPHA,
+	int8_t *A, int lda,
+	int8_t *B, int ldb,
+	int16_t *C, int ldc)
+{
+	int32_t *tmp = calloc(N, sizeof(int32_t));
+	int i, j, k;
+	for (i = 0; i < M; ++i) {
+		for (k = 0; k < K; ++k) {
+			register int16_t A_PART = ALPHA*A[i*lda + k];
+			//#pragma simd parallel for
+			for (j = 0; j < N; ++j) {
+				tmp[j] += A_PART*B[k*ldb + j];
+				//C[i*ldc + j] += max_abs(A_PART*B[k*ldb + j] / (32), (256 * 128 - 1));
+			}
+		}
+		for (j = 0; j < N; ++j) C[i*ldc + j] += max_abs(tmp[j] / (32), (256 * 128 - 1));
+	}
+	free(tmp);
+}
+
 // 4 layers in 1: convolution, batch-normalization, BIAS and activation
 void forward_convolutional_layer_q(layer l, network_state state)
 {
@@ -299,8 +362,8 @@ void forward_convolutional_layer_q(layer l, network_state state)
 					int const input_pre_index = chan*l.w*l.h;
 					//float sum = 0;
 
-					//int16_t sum = 0;
-					int32_t sum = 0;
+					int16_t sum = 0;
+					//int32_t sum = 0;
 
 					// filter - y
 					for (f_y = 0; f_y < l.size; ++f_y)
@@ -334,22 +397,32 @@ void forward_convolutional_layer_q(layer l, network_state state)
 				}
 	}
 #else
-
+	int fil;
+	// filter index 
+	for (fil = 0; fil < l.n; ++fil) {
+		for (j = 0; j < out_size; ++j)
+			//output_q[fil*out_size + j] = output_q[fil*out_size + j]/R_MULT + biases_q[fil] * (l.weights_quant_multipler*I_MULT / R_MULT);
+			output_q[fil*out_size + j] = biases_q[fil] * (l.weights_quant_multipler*I_MULT / R_MULT);
+	}
 
 	int m = l.n;
 	int k = l.size*l.size*l.c;
 	int n = out_h*out_w;
-	float *a = l.weights;
-	float *b = state.workspace;
-	float *c = l.output;
+	int8_t *a = weights_q;
+	int8_t *b = (int8_t *)state.workspace;
+	int16_t *c = output_q;
 
 	// convolution as GEMM (as part of BLAS)
-	for (i = 0; i < l.batch; ++i) {		
-		im2col_q(state.input, l.c, l.h, l.w, l.size, l.stride, l.pad, b);	// im2col.c
-		gemm_nn(m, n, k, 1, a, k, b, n, c, n);	// gemm.c
-		c += n*m;
-		state.input += l.c*l.h*l.w;
-	}
+	//for (i = 0; i < l.batch; ++i) {		
+		im2col_cpu_int8(input_q, l.c, l.h, l.w, l.size, l.stride, l.pad, b);	// here
+		//gemm_nn_int8(m, n, k, 1, a, k, b, n, c, n);	// single-thread gemm
+		
+		int t;	// multi-thread gemm
+		#pragma omp parallel for
+		for (t = 0; t < m; ++t) {
+			gemm_nn_int8(1, n, k, 1, a + t*k, k, b, n, c + t*n, n);
+		}		
+	//}
 #endif
 
 
