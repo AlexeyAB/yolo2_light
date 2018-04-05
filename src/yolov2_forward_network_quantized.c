@@ -436,36 +436,41 @@ void forward_route_layer_q(const layer l, network_state state)
 	}
 }
 
-
 // Reorg layer - just change dimension sizes of the previous layer (some dimension sizes are increased by decreasing other)
 void forward_reorg_layer_q(const layer l, network_state state)
 {
 	float *out = l.output;
 	float *x = state.input;
-	int w = l.w;
-	int h = l.h;
-	int c = l.c;
+	int out_w = l.out_w;
+	int out_h = l.out_h;
+	int out_c = l.out_c;
 	int batch = l.batch;
-	
+
 	int stride = l.stride;
 	int b, i, j, k;
-	int out_c = c / (stride*stride);
+	int in_c = out_c / (stride*stride);
 
-	// batch index
+	int out_w_X_stride = out_w*stride;
+	int out_h_X_stride = out_h*stride;
+
+	//printf("\n out_c = %d, out_w = %d, out_h = %d, stride = %d, forward = %d \n", out_c, out_w, out_h, stride, forward);
+	//printf("  in_c = %d,  in_w = %d,  in_h = %d \n", in_c, out_w*stride, out_h*stride);
+
 	for (b = 0; b < batch; ++b) {
-		// channel index
-		for (k = 0; k < c; ++k) {
-			// y
-			for (j = 0; j < h; ++j) {
-				// x
-				for (i = 0; i < w; ++i) {
-					int in_index = i + w*(j + h*(k + c*b));
-					int c2 = k % out_c;
-					int offset = k / out_c;
-					int w2 = i*stride + offset % stride;
-					int h2 = j*stride + offset / stride;
-					int out_index = w2 + w*stride*(h2 + h*stride*(c2 + out_c*b));
-					out[in_index] = x[out_index];
+		for (k = 0; k < out_c; ++k) {
+			int c2 = k % in_c;
+			int pre_out_index = out_h_X_stride*(c2 + in_c*b);
+			int offset = k / in_c;
+			int offset_mod_stride = offset % stride;
+			int offset_div_stride = offset / stride;
+			for (j = 0; j < out_h; ++j) {
+				int pre_in_index = out_w*(j + out_h*(k + out_c*b));
+				for (i = 0; i < out_w; ++i) {
+					int in_index = i + pre_in_index;
+					int w2 = i*stride + offset_mod_stride;
+					int h2 = j*stride + offset_div_stride;
+					int out_index = w2 + out_w_X_stride*(h2 + pre_out_index);
+					out[out_index] = x[in_index];	// used by default for forward (i.e. forward = 0)
 				}
 			}
 		}
