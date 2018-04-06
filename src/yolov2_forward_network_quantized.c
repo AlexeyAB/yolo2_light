@@ -194,14 +194,104 @@ void im2col_cpu_int8(int8_t* data_im,
 	}
 }
 
+// Use to enable AVX or SSE41
+#define AVX	// 1.35 sec (0.8 FPS) 2.3x - GCC -mavx -mavx2 -mfma -ffp-contract=fast
+//#define SSE41	// 1.55 sec (0.7 FPS) 2x
+// default 3.10 sec (0.3 FPS)
+
+
+#ifdef _WIN64
 #include <intrin.h>
+#else
+#include <x86intrin.h>
+#endif
+
+#if defined(AVX) || defined(SSE41)
 #include <ammintrin.h>
 #include <immintrin.h>
 #include <smmintrin.h>
 #include <emmintrin.h>
 // https://software.intel.com/sites/landingpage/IntrinsicsGuide/#text=broad&expand=561
+#endif	// AVX or SSE41
 
-void gemm_nn_int8(int M, int N, int K, int8_t ALPHA,
+
+#if defined(AVX)
+// 1.35 sec
+void gemm_nn_int8_int16(int M, int N, int K, int8_t ALPHA,
+	int8_t *A, int lda,
+	int8_t *B, int ldb,
+	int16_t *C, int ldc)
+{
+	__m256i multyplied_i32, res;
+	__m256i a, b, d;
+	__m128i tmp128;
+
+	int32_t *c_tmp = calloc(N, sizeof(int32_t));
+	int i, j, k;
+	for (i = 0; i < M; ++i) {
+		for (k = 0; k < K; ++k) {
+			register int16_t A_PART = ALPHA*A[i*lda + k];
+			a = _mm256_set1_epi16(A_PART);
+			for (j = 0; j < N - 32; j += 32) {
+				int index = k*ldb + j;
+				d = _mm256_loadu_si256((__m256i*)&B[index]);
+
+				tmp128 = _mm256_extractf128_si256(d, 0);// get low 128 bit
+				b = _mm256_cvtepi8_epi16(tmp128);		// int8 -> int16	
+
+				b = _mm256_mullo_epi16(a, b);	// B = A * B
+
+				tmp128 = _mm256_extractf128_si256(b, 0);		// get low 128 bit
+				multyplied_i32 = _mm256_cvtepi16_epi32(tmp128);	// int16 -> int32
+
+				res = _mm256_loadu_si256(&c_tmp[j]);		// load temp C
+				res = _mm256_add_epi32(multyplied_i32, res);// (A*B) + C
+				_mm256_storeu_si256(&c_tmp[j], res);		// store temp C
+
+				tmp128 = _mm256_extractf128_si256(b, 1);		// get high 128 bit
+				multyplied_i32 = _mm256_cvtepi16_epi32(tmp128);	// int16 -> int32
+
+				res = _mm256_loadu_si256(&c_tmp[j + 8]);	// Load next temp C
+				res = _mm256_add_epi32(multyplied_i32, res);// (A*B) + C
+				_mm256_storeu_si256(&c_tmp[j + 8], res);	// store temp C
+
+				tmp128 = _mm256_extractf128_si256(d, 1);// get high 128 bit
+				b = _mm256_cvtepi8_epi16(tmp128);		// int8 -> int16 (for low 8 bytes)
+
+				b = _mm256_mullo_epi16(a, b);	// B = A * B
+
+				tmp128 = _mm256_extractf128_si256(b, 0);		// get low 128 bit
+				multyplied_i32 = _mm256_cvtepi16_epi32(tmp128);	// int16 -> int32
+
+				res = _mm256_loadu_si256(&c_tmp[j + 16]);	// Load next temp C
+				res = _mm256_add_epi32(multyplied_i32, res);// (A*B) + C
+				_mm256_storeu_si256(&c_tmp[j + 16], res);	// store temp C
+
+				tmp128 = _mm256_extractf128_si256(b, 1);		// get high 128 bit
+				multyplied_i32 = _mm256_cvtepi16_epi32(tmp128);	// int16 -> int32
+
+				res = _mm256_loadu_si256(&c_tmp[j + 24]);	// Load next temp C
+				res = _mm256_add_epi32(multyplied_i32, res);// (A*B) + C
+				_mm256_storeu_si256(&c_tmp[j + 24], res);	// store temp C
+
+				//c_tmp[j] += A_PART*B[k*ldb + j];
+				//C[i*ldc + j] += max_abs(A_PART*B[k*ldb + j] / (32), (256 * 128 - 1));
+			}
+
+			int prev_end = (N % 32 == 0) ? (N - 32) : (N / 32) * 32;
+			for (j = prev_end; j < N; ++j) {
+				c_tmp[j] += A_PART*B[k*ldb + j];
+			}
+		}
+		for (j = 0; j < N; ++j) C[i*ldc + j] += max_abs(c_tmp[j] / (32), (256 * 128 - 1));
+		//for (j = 0; j < N; ++j) C[i*ldc + j] += c_tmp[j] / (32);
+	}
+	free(c_tmp);
+}
+
+#elif defined(SSE41)
+// 1.62 sec
+void gemm_nn_int8_int16(int M, int N, int K, int8_t ALPHA,
 	int8_t *A, int lda,
 	int8_t *B, int ldb,
 	int16_t *C, int ldc)
@@ -220,7 +310,6 @@ void gemm_nn_int8(int M, int N, int K, int8_t ALPHA,
 				int index = k*ldb + j;
 				d = _mm_loadu_si128((__m128i*)&B[index]);
 					
-				// __m256i _mm256_cvtepi8_epi16(__m128i a)	// AVX
 				b = _mm_cvtepi8_epi16(d);	// int8 -> int16	
 
 				b = _mm_mullo_epi16(a, b);	// B = A * B
@@ -266,12 +355,15 @@ void gemm_nn_int8(int M, int N, int K, int8_t ALPHA,
 			}
 		}
 		for (j = 0; j < N; ++j) C[i*ldc + j] += max_abs(c_tmp[j] / (32), (256 * 128 - 1));
+		//for (j = 0; j < N; ++j) C[i*ldc + j] += c_tmp[j] / (32);
 	}
 	free(c_tmp);
 }
 
-/*
-void gemm_nn_int8(int M, int N, int K, int8_t ALPHA,
+#else
+
+
+void gemm_nn_int8_int16(int M, int N, int K, int8_t ALPHA,
 	int8_t *A, int lda,
 	int8_t *B, int ldb,
 	int16_t *C, int ldc)
@@ -291,7 +383,7 @@ void gemm_nn_int8(int M, int N, int K, int8_t ALPHA,
 	}
 	free(tmp);
 }
-*/
+#endif	// SSE41 or AVX
 
 // 4 layers in 1: convolution, batch-normalization, BIAS and activation
 void forward_convolutional_layer_q(layer l, network_state state)
@@ -491,12 +583,12 @@ void forward_convolutional_layer_q(layer l, network_state state)
 	// convolution as GEMM (as part of BLAS)
 	//for (i = 0; i < l.batch; ++i) {		
 		im2col_cpu_int8(input_q, l.c, l.h, l.w, l.size, l.stride, l.pad, b);	// here
-		//gemm_nn_int8(m, n, k, 1, a, k, b, n, c, n);	// single-thread gemm
+		//gemm_nn_int8_int16(m, n, k, 1, a, k, b, n, c, n);	// single-thread gemm
 		
 		int t;	// multi-thread gemm
 		#pragma omp parallel for
 		for (t = 0; t < m; ++t) {
-			gemm_nn_int8(1, n, k, 1, a + t*k, k, b, n, c + t*n, n);
+			gemm_nn_int8_int16(1, n, k, 1, a + t*k, k, b, n, c + t*n, n);
 		}		
 	//}
 #endif

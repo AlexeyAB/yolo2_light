@@ -2,6 +2,7 @@ GPU=0
 OPENCV=0
 DEBUG=0
 OPENMP=0
+AVX=0
 
 ifeq ($(GPU), 1)
 CUDNN=1
@@ -31,6 +32,10 @@ CFLAGS=-Wall -Wfatal-errors
 
 ifeq ($(DEBUG), 1) 
 OPTS=-O0 -g
+endif
+
+ifeq ($(AVX), 1) 
++CFLAGS= -ffp-contract=fast -mavx -mavx2 -mfma
 endif
 
 CFLAGS+=$(OPTS)
