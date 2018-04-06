@@ -194,8 +194,83 @@ void im2col_cpu_int8(int8_t* data_im,
 	}
 }
 
+#include <intrin.h>
+#include <ammintrin.h>
+#include <immintrin.h>
+#include <smmintrin.h>
+#include <emmintrin.h>
+// https://software.intel.com/sites/landingpage/IntrinsicsGuide/#text=broad&expand=561
 
+void gemm_nn_int8(int M, int N, int K, int8_t ALPHA,
+	int8_t *A, int lda,
+	int8_t *B, int ldb,
+	int16_t *C, int ldc)
+{
+	__m128i multyplied_i32, res;
+	__m128i a, b, d;
+	//c = _mm_set1_epi16(32);
 
+	int32_t *c_tmp = calloc(N, sizeof(int32_t));
+	int i, j, k;
+	for (i = 0; i < M; ++i) {
+		for (k = 0; k < K; ++k) {
+			register int16_t A_PART = ALPHA*A[i*lda + k];
+			a = _mm_set1_epi16(A_PART);
+			for (j = 0; j < N - 16; j += 16) {
+				int index = k*ldb + j;
+				d = _mm_loadu_si128((__m128i*)&B[index]);
+					
+				// __m256i _mm256_cvtepi8_epi16(__m128i a)	// AVX
+				b = _mm_cvtepi8_epi16(d);	// int8 -> int16	
+
+				b = _mm_mullo_epi16(a, b);	// B = A * B
+					
+				multyplied_i32 = _mm_cvtepi16_epi32(b);	// int16 -> int32
+
+				res = _mm_loadu_si128(&c_tmp[j]);		// load temp C
+				res = _mm_add_epi32(multyplied_i32, res);// (A*B) + C
+				_mm_store_si128(&c_tmp[j], res);		// store temp C
+
+				b = _mm_srli_si128(b, 8);				// Shift Right -> 8 bytes
+				multyplied_i32 = _mm_cvtepi16_epi32(b);	// int16 -> int32
+
+				res = _mm_loadu_si128(&c_tmp[j + 4]);	// Load next temp C
+				res = _mm_add_epi32(multyplied_i32, res);// (A*B) + C
+				_mm_store_si128(&c_tmp[j + 4], res);	// store temp C
+					
+				d = _mm_srli_si128(d, 8);	// Shift Right -> 8 bytes
+				b = _mm_cvtepi8_epi16(d);	// int8 -> int16 (for low 8 bytes)
+
+				b = _mm_mullo_epi16(a, b);	// B = A * B
+
+				multyplied_i32 = _mm_cvtepi16_epi32(b);	// int16 -> int32
+
+				res = _mm_loadu_si128(&c_tmp[j + 8]);	// Load next temp C
+				res = _mm_add_epi32(multyplied_i32, res);// (A*B) + C
+				_mm_store_si128(&c_tmp[j + 8], res);	// store temp C
+					
+				b = _mm_srli_si128(b, 8);				// Shift Right -> 8 bytes
+				multyplied_i32 = _mm_cvtepi16_epi32(b);	// int16 -> int32
+
+				res = _mm_loadu_si128(&c_tmp[j + 12]);	// Load next temp C
+				res = _mm_add_epi32(multyplied_i32, res);// (A*B) + C
+				_mm_store_si128(&c_tmp[j + 12], res);	// store temp C
+				
+				//c_tmp[j] += A_PART*B[k*ldb + j];
+				//C[i*ldc + j] += max_abs(A_PART*B[k*ldb + j] / (32), (256 * 128 - 1));
+			}
+
+			int prev_end = (N % 16 == 0)?(N - 16) : (N / 16) * 16;
+			for (j = prev_end; j < N; ++j) {
+				c_tmp[j] += A_PART*B[k*ldb + j];
+			}
+		}
+		for (j = 0; j < N; ++j) C[i*ldc + j] += max_abs(c_tmp[j] / (32), (256 * 128 - 1));
+	}
+	free(c_tmp);
+}
+
+/*
 void gemm_nn_int8(int M, int N, int K, int8_t ALPHA,
 	int8_t *A, int lda,
 	int8_t *B, int ldb,
@@ -216,6 +291,7 @@ void gemm_nn_int8(int M, int N, int K, int8_t ALPHA,
 	}
 	free(tmp);
 }
+*/
 
 // 4 layers in 1: convolution, batch-normalization, BIAS and activation
 void forward_convolutional_layer_q(layer l, network_state state)
