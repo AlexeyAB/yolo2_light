@@ -3,9 +3,6 @@
 
 #define GEMMCONV
 
-#include "opencv2/highgui/highgui_c.h"
-#include "opencv2/core/core_c.h"
-#include "opencv2/core/version.hpp"
 
 // from: box.h
 typedef struct {
@@ -79,6 +76,10 @@ float get_multiplier(float *arr_ptr, int arr_size, int bits_length)
 	return multiplier;
 }
 
+#ifdef OPENCV
+#include "opencv2/highgui/highgui_c.h"
+#include "opencv2/core/core_c.h"
+#include "opencv2/core/version.hpp"
 
 void draw_distribution(float *arr_ptr, int arr_size, char *name)
 {
@@ -153,6 +154,7 @@ void draw_distribution(float *arr_ptr, int arr_size, char *name)
 
 	free(count);
 }
+#endif // OPENCV
 
 // im2col.c
 int8_t im2col_get_pixel_int8(int8_t *im, int height, int width, int channels,
@@ -200,13 +202,14 @@ void im2col_cpu_int8(int8_t* data_im,
 // default 3.10 sec (0.3 FPS)
 
 
+#if defined(AVX) || defined(SSE41)
+
 #ifdef _WIN64
 #include <intrin.h>
 #else
 #include <x86intrin.h>
 #endif
 
-#if defined(AVX) || defined(SSE41)
 #include <ammintrin.h>
 #include <immintrin.h>
 #include <smmintrin.h>
