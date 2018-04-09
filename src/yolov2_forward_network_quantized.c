@@ -195,7 +195,7 @@ void im2col_cpu_int8(int8_t* data_im,
 }
 
 // Use to enable AVX or SSE41
-#define AVX	// 1.35 sec (0.8 FPS) 2.3x - GCC -mavx -mavx2 -mfma -ffp-contract=fast
+//#define AVX	// 1.35 sec (0.8 FPS) 2.3x - GCC -mavx -mavx2 -mfma -ffp-contract=fast
 //#define SSE41	// 1.55 sec (0.7 FPS) 2x
 // default 3.10 sec (0.3 FPS)
 
