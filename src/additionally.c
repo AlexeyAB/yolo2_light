@@ -57,6 +57,53 @@ void im2col_cpu(float* data_im,
     }
 }
 
+// -------------- my own --------------
+
+// fuse convolutional and batch_norm weights into one convolutional-layer
+void yolov2_fuse_conv_batchnorm(network net)
+{
+	int j;
+	for (j = 0; j < net.n; ++j) {
+		layer *l = &net.layers[j];
+
+		if (l->type == CONVOLUTIONAL) {
+			printf(" Fuse Convolutional layer \t\t l->size = %d  \n", l->size);
+
+			if (l->batch_normalize) {
+				int f;
+				for (f = 0; f < l->n; ++f)
+				{
+					l->biases[f] = l->biases[f] - l->scales[f] * l->rolling_mean[f] / (sqrtf(l->rolling_variance[f]) + .000001f);
+
+					const size_t filter_size = l->size*l->size*l->c;
+					int i;
+					for (i = 0; i < filter_size; ++i) {
+						int w_index = f*filter_size + i;
+
+						l->weights[w_index] = l->weights[w_index] * l->scales[f] / (sqrtf(l->rolling_variance[f]) + .000001f);
+					}
+				}
+
+				l->batch_normalize = 0;
+#ifdef GPU
+				if (gpu_index >= 0) {
+					push_convolutional_layer(*l);
+				}
+#endif
+
+#ifdef OPENCL
+				//if (gpu_index >= 0) {
+				ocl_push_convolutional_layer(*l);
+				//}
+#endif
+			}
+		}
+		else {
+			printf(" Skip layer: %d \n", l->type);
+		}
+	}
+}
+
 // -------------- blas.c --------------
 
 void gemm_nn(int M, int N, int K, float ALPHA,

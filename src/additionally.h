@@ -28,6 +28,7 @@
 #endif
 
 #ifdef OPENCV
+#include <opencv2/core/fast_math.hpp>
 #include "opencv2/highgui/highgui_c.h"
 #include "opencv2/imgproc/imgproc_c.h"
 #include "opencv2/core/types_c.h"
