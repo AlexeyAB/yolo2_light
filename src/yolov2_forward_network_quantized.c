@@ -4,6 +4,14 @@
 #define GEMMCONV
 
 
+
+#define W_MAX_VAL (256/2 - 1)	// 7-bit (1-bit sign)
+#define I_MAX_VAL (256/2 - 1)	// 7-bit (1-bit sign)
+#define R_MAX_VAL (256*256/2 - 1)	// 31-bit (1-bit sign)
+
+
+#define R_MULT (32)	// 4 - 32
+
 // from: box.h
 typedef struct {
 	float x, y, w, h;
@@ -220,7 +228,78 @@ void im2col_cpu_int8(int8_t* data_im,
 
 
 #if defined(AVX)
-// 1.35 sec
+
+
+inline __m256i _mm256_div_epi16(const __m256i va, const int b)
+{
+	__m256i vb = _mm256_set1_epi16(32768 / b);
+	return _mm256_mulhrs_epi16(va, vb);
+}
+
+#define INTERMEDIATE_MULT 15	// 8 or 15
+#define FINAL_MULT (R_MULT / INTERMEDIATE_MULT)
+
+// 0.89 sec
+void gemm_nn_int8_int16_conv16(int M, int N, int K, int8_t ALPHA,
+	int8_t *A, int lda,
+	int8_t *B, int ldb,
+	int16_t *C, int ldc)
+{
+	__m256i res;
+	__m256i a, b, d;
+	__m128i tmp128;
+	__m256i div256 = _mm256_set1_epi16(INTERMEDIATE_MULT);
+
+	int16_t *c_tmp = calloc(N, sizeof(int16_t));
+	int i, j, k;
+	for (i = 0; i < M; ++i) {
+		for (k = 0; k < K; ++k) {
+			register int16_t A_PART = ALPHA*A[i*lda + k];
+			a = _mm256_set1_epi16(A_PART);
+			for (j = 0; j < N - 32; j += 32) {
+				int index = k*ldb + j;
+				d = _mm256_loadu_si256((__m256i*)&B[index]);
+
+
+				tmp128 = _mm256_extractf128_si256(d, 0);// get low 128 bit
+				b = _mm256_cvtepi8_epi16(tmp128);		// int8 -> int16	
+
+				b = _mm256_mullo_epi16(a, b);	// B = A * B
+
+				b = _mm256_div_epi16(b, INTERMEDIATE_MULT);	// B = (A * B) / INTERMEDIATE_MULL
+
+				res = _mm256_loadu_si256(&c_tmp[j]);		// load temp C
+				res = _mm256_add_epi16(b, res);				// (A*B) + C
+				_mm256_storeu_si256(&c_tmp[j], res);		// store temp C
+
+
+				tmp128 = _mm256_extractf128_si256(d, 1);// get high 128 bit
+				b = _mm256_cvtepi8_epi16(tmp128);		// int8 -> int16 (for low 8 bytes)
+
+				b = _mm256_mullo_epi16(a, b);	// B = A * B
+
+				b = _mm256_div_epi16(b, INTERMEDIATE_MULT);	// B = (A * B) / INTERMEDIATE_MULL
+
+				res = _mm256_loadu_si256(&c_tmp[j + 16]);	// Load next temp C
+				res = _mm256_add_epi16(b, res);				// (A*B) + C
+				_mm256_storeu_si256(&c_tmp[j + 16], res);	// store temp C
+
+				//c_tmp[j] += A_PART*B[k*ldb + j];
+				//C[i*ldc + j] += max_abs(A_PART*B[k*ldb + j] / (INTERMEDIATE_MULL), (256 * 128 - 1));
+			}
+
+			int prev_end = (N % 32 == 0) ? (N - 32) : (N / 32) * 32;
+			for (j = prev_end; j < N; ++j) {
+				c_tmp[j] += A_PART*B[k*ldb + j] / (INTERMEDIATE_MULT);
+			}
+		}
+		for (j = 0; j < N; ++j) C[i*ldc + j] += c_tmp[j] / FINAL_MULT;
+	}
+	free(c_tmp);
+}
+
+
+// 1.15 sec
 void gemm_nn_int8_int16(int M, int N, int K, int8_t ALPHA,
 	int8_t *A, int lda,
 	int8_t *B, int ldb,
@@ -287,14 +366,14 @@ void gemm_nn_int8_int16(int M, int N, int K, int8_t ALPHA,
 				c_tmp[j] += A_PART*B[k*ldb + j];
 			}
 		}
-		for (j = 0; j < N; ++j) C[i*ldc + j] += max_abs(c_tmp[j] / (32), (256 * 128 - 1));
-		//for (j = 0; j < N; ++j) C[i*ldc + j] += c_tmp[j] / (32);
+		for (j = 0; j < N; ++j) C[i*ldc + j] += max_abs(c_tmp[j] / (R_MULT), (256 * 128 - 1));
+		//for (j = 0; j < N; ++j) C[i*ldc + j] += c_tmp[j] / (R_MULT);
 	}
 	free(c_tmp);
 }
 
 #elif defined(SSE41)
-// 1.62 sec
+// 1.3 sec
 void gemm_nn_int8_int16(int M, int N, int K, int8_t ALPHA,
 	int8_t *A, int lda,
 	int8_t *B, int ldb,
@@ -358,15 +437,15 @@ void gemm_nn_int8_int16(int M, int N, int K, int8_t ALPHA,
 				c_tmp[j] += A_PART*B[k*ldb + j];
 			}
 		}
-		for (j = 0; j < N; ++j) C[i*ldc + j] += max_abs(c_tmp[j] / (32), (256 * 128 - 1));
-		//for (j = 0; j < N; ++j) C[i*ldc + j] += c_tmp[j] / (32);
+		for (j = 0; j < N; ++j) C[i*ldc + j] += max_abs(c_tmp[j] / (R_MULT), (256 * 128 - 1));
+		//for (j = 0; j < N; ++j) C[i*ldc + j] += c_tmp[j] / (R_MULT);
 	}
 	free(c_tmp);
 }
 
 #else
 
-
+// 2.9 sec
 void gemm_nn_int8_int16(int M, int N, int K, int8_t ALPHA,
 	int8_t *A, int lda,
 	int8_t *B, int ldb,
@@ -380,25 +459,18 @@ void gemm_nn_int8_int16(int M, int N, int K, int8_t ALPHA,
 			//#pragma simd parallel for
 			for (j = 0; j < N; ++j) {
 				tmp[j] += A_PART*B[k*ldb + j];
-				//C[i*ldc + j] += max_abs(A_PART*B[k*ldb + j] / (32), (256 * 128 - 1));
+				//C[i*ldc + j] += max_abs(A_PART*B[k*ldb + j] / (R_MULT), (256 * 128 - 1));
 			}
 		}
-		for (j = 0; j < N; ++j) C[i*ldc + j] += max_abs(tmp[j] / (32), (256 * 128 - 1));
+		for (j = 0; j < N; ++j) C[i*ldc + j] += max_abs(tmp[j] / (R_MULT), (256 * 128 - 1));
 	}
 	free(tmp);
 }
 #endif	// SSE41 or AVX
 
-#define W_MAX_VAL (256/2 - 1)	// 7-bit (1-bit sign)
-#define I_MAX_VAL (256/2 - 1)	// 7-bit (1-bit sign)
-#define R_MAX_VAL (256*128 - 1)	// 31-bit (1-bit sign)
-//#define W_MULT (256.F*4)
-//#define I_MULT (16.F)
-//#define I_MULT (l.input_quant_multipler)
-#define R_MULT (32)	// 4 - 32
 
 // 4 layers in 1: convolution, batch-normalization, BIAS and activation
-void forward_convolutional_layer_q(layer l, network_state state, float output_multipler)
+void forward_convolutional_layer_q(layer l, network_state state, int return_float)
 {
 
 	int out_h = (l.h + 2 * l.pad - l.size) / l.stride + 1;	// output_height=input_height for stride=1 and pad=1 
@@ -408,7 +480,7 @@ void forward_convolutional_layer_q(layer l, network_state state, float output_mu
 	size_t const weights_size = l.size*l.size*l.c*l.n;
 
 	// fill zero (ALPHA)
-	for (i = 0; i < l.outputs; ++i) l.output[i] = 0;
+	//for (i = 0; i < l.outputs; ++i) l.output[i] = 0;
 
 	// l.n - number of filters on this layer
 	// l.c - channels of input-array
@@ -438,9 +510,6 @@ void forward_convolutional_layer_q(layer l, network_state state, float output_mu
 	// filter index 
 	#pragma omp parallel for  	// "omp parallel for" - automatic parallelization of loop by using OpenMP
 	for (fil = 0; fil < l.n; ++fil) {
-		for (j = 0; j < out_size; ++j)
-			//output_q[fil*out_size + j] = biases_q[fil] * (l.weights_quant_multipler*l.input_quant_multipler / R_MULT);
-			output_q[fil*out_size + j] = l.biases_quant[fil];
 		
 		int chan, y, x, f_y, f_x;
 		// channel index
@@ -457,6 +526,7 @@ void forward_convolutional_layer_q(layer l, network_state state, float output_mu
 
 					//int16_t sum = 0;
 					int32_t sum = 0;
+					//conv_t sum = 0;
 
 					// filter - y
 					for (f_y = 0; f_y < l.size; ++f_y)
@@ -473,7 +543,7 @@ void forward_convolutional_layer_q(layer l, network_state state, float output_mu
 
 							//sum += state.input[input_index] * l.weights[weights_index];
 							// int16 += int8 * int8;
-							sum += (int16_t)state.input_int8[input_index] * (int16_t)l.weights_int8[weights_index];
+							sum += (conv_t)state.input_int8[input_index] * (conv_t)l.weights_int8[weights_index];
 						}
 					}
 					// l.output[filters][width][height] += 
@@ -481,23 +551,17 @@ void forward_convolutional_layer_q(layer l, network_state state, float output_mu
 					//		l.weights[filters][channels][filter_width][filter_height];
 					
 					
-					//l.output[output_index] += sum;
-					//output_q[output_index] += sum;
 					//output_q[output_index] += max_abs(sum, R_MAX_VAL);
 					output_q[output_index] += max_abs(sum / R_MULT, R_MAX_VAL);
 					//output_q[output_index] += sum / R_MULT;
+
 					//if (fabs(output_q[output_index]) > 65535) printf(" fabs(output_q[output_index]) > 65535 \n");
 				}
 	}
 #else
 	int fil;
-	// filter index 
-	for (fil = 0; fil < l.n; ++fil) {
-		for (j = 0; j < out_size; ++j) {
-			output_q[fil*out_size + j] = l.biases_quant[fil];
-		}
-	}
 
+	// cuDNN: y = conv(x)
 	int m = l.n;
 	int k = l.size*l.size*l.c;
 	int n = out_h*out_w;
@@ -514,29 +578,51 @@ void forward_convolutional_layer_q(layer l, network_state state, float output_mu
 		#pragma omp parallel for
 		for (t = 0; t < m; ++t) {
 			gemm_nn_int8_int16(1, n, k, 1, a + t*k, k, b, n, c + t*n, n);
+			//gemm_nn_int8_int16_conv16(1, n, k, 1, a + t*k, k, b, n, c + t*n, n);
 		}		
 	//}
 #endif
 
-	// 4. Activation function (LEAKY or LINEAR)
+	// cuDNN: y = alpha1 * conv(x)
+	for (i = 0; i < l.outputs; ++i) {
+		output_q[i] = output_q[i] * l.output_multipler;	// cuDNN: alpha1
+	}
+
+	// cuDNN: y = alpha1 * conv(x) + bias 
+	for (fil = 0; fil < l.n; ++fil) {
+		for (j = 0; j < out_size; ++j) {
+			output_q[fil*out_size + j] += l.biases_quant[fil];
+		}
+	}
+
+
+	// cuDNN: y = act ( alpha1 * conv(x) + bias )
+	// bias is always FLOAT
 	if (l.activation == LEAKY) {
 		for (i = 0; i < l.n*out_size; ++i) {
-			output_q[i] = (output_q[i]>0) ? output_q[i] : 0.1F * output_q[i]; //leaky_activate(l.output[i]);
+			output_q[i] = (output_q[i]>0) ? output_q[i] : output_q[i] / 10; //leaky_activate(l.output[i]);
 		}
 	}	
 	
-	//for (i = 0; i < l.outputs; ++i) l.output[i] = output_q[i] / (l.weights_quant_multipler*l.input_quant_multipler / (R_MULT));
-
-	for (i = 0; i < l.outputs; ++i) {
-		conv_t src;
-		src = output_q[i] * output_multipler;
-		l.output_int8[i] = max_abs(src, I_MAX_VAL);
+	// cuDNN: y = act ( alpha1 * conv(x) + alpha2 * z + bias ), where: alpha2=0, z=NULL
+	if (return_float) {
+		// y - FLOAT, x,w - X_INT8 / X_INT8x4
+		for (i = 0; i < l.outputs; ++i) {
+			l.output[i] = output_q[i] / 8;	// /8	// float32
+		}
+	}
+	else
+	{
+		// y - X_INT8 / X_INT8x4, x,w - X_INT8 / X_INT8x4
+		for (i = 0; i < l.outputs; ++i) {
+			l.output_int8[i] = max_abs(output_q[i], I_MAX_VAL);	// int8
+		}
 	}
 
 	free(output_q);
 }
 
-#define MIN_INT8 -127
+#define MIN_INT8 -128
 
 // MAX pooling layer
 void forward_maxpool_layer_q(const layer l, network_state state)
@@ -760,7 +846,6 @@ void forward_region_layer_q(const layer l, network_state state)
 
 void yolov2_forward_network_q(network net, network_state state)
 {
-	int counter = 0;
 	state.workspace = net.workspace;
 	int i, k;
 	for (i = 0; i < net.n; ++i) {
@@ -768,12 +853,9 @@ void yolov2_forward_network_q(network net, network_state state)
 		layer l = net.layers[i];
 
 		if (l.type == CONVOLUTIONAL) {
-			float output_multipler;
-			if (counter == 0) output_multipler = 2 / (l.weights_quant_multipler * l.input_quant_multipler / R_MULT);
-			else if (counter >= 1) output_multipler = 16 / (l.weights_quant_multipler * l.input_quant_multipler / R_MULT);
-			++counter;
+			int return_float = (i == (net.n - 2));	// if this is the last convolutional layer
 
-			forward_convolutional_layer_q(l, state, output_multipler);
+			forward_convolutional_layer_q(l, state, return_float);
 			//printf("\n CONVOLUTIONAL \t\t l.size = %d  \n", l.size);
 		}
 		else if (l.type == MAXPOOL) {
@@ -789,10 +871,6 @@ void yolov2_forward_network_q(network net, network_state state)
 			//printf("\n REORG \n");
 		}
 		else if (l.type == REGION) {
-			//#pragma omp parallel for
-			for (k = 0; k < l.inputs; ++k) {
-				state.input[k] = (float)state.input_int8[k] / 16;
-			}
 			forward_region_layer_q(l, state);
 			printf("\n REGION \n");
 		}
@@ -820,7 +898,7 @@ float *network_predict_quantized(network net, float *input)
 	state.delta = 0;
 	int k;
 	for (k = 0; k < net.w*net.h*net.c; ++k){
-		int32_t src = state.input[k] * 128;
+		int16_t src = state.input[k] * net.layers[0].input_quant_multipler;
 		state.input_int8[k] = max_abs(src, I_MAX_VAL);
 	}
 
@@ -935,7 +1013,7 @@ void quantinization_and_get_multipliers(network net)
 
 			// get optimal multipliers - for Weights
 			float weights_multiplier = get_multiplier(l->weights, weights_size, 8);
-			l->weights_quant_multipler = weights_multiplier/4;	// manual shift 2 bits
+			l->weights_quant_multipler = weights_multiplier / 4;	// manual shift 2 bits
 
 			for (k = 0; k < weights_size; ++k) {
 				float w = l->weights[k] * l->weights_quant_multipler;
@@ -948,9 +1026,14 @@ void quantinization_and_get_multipliers(network net)
 			else if(counter == 1) l->input_quant_multipler = 2;
 			else  l->input_quant_multipler = 16;
 			++counter;
+
+			//if (counter == 0) l->output_multipler = 128 / (l->weights_quant_multipler * l->input_quant_multipler / R_MULT);
+			//else 
+			if (counter == 1) l->output_multipler = 2 / (l->weights_quant_multipler * l->input_quant_multipler / R_MULT);
+			else if (counter >= 1) l->output_multipler = 16 / (l->weights_quant_multipler * l->input_quant_multipler / R_MULT);
 			
 			// calculate optimal multipliers - for Biases
-			float biases_multipler = (l->weights_quant_multipler*l->input_quant_multipler / R_MULT);
+			float biases_multipler = (l->output_multipler * l->weights_quant_multipler * l->input_quant_multipler / R_MULT);
 			for (k = 0; k < l->n; ++k)
 				l->biases_quant[k] = l->biases[k] * biases_multipler;
 
