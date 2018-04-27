@@ -416,88 +416,12 @@ void forward_convolutional_layer_q(layer l, network_state state, float output_mu
 	// l.w - width of input-array
 	// l.size - width and height of filters (the same size for all filters)
 
-//#define MAX_VAL (65535*16)
-//#define MULT 256.F
-	
-	/*
-	for (f = 0; f < l.n; ++f)
-	{
-		const int filter_size = l.size*l.size*l.c;
-		int w_index = f*filter_size;
-		char buff[256];
-		sprintf(buff, "%d", f);
-		//printf("\n f = %d, filter_size = %d, w_index = %d, weights_size = %d, l.weights + w_index = %p \n",
-		//	f, filter_size, w_index, weights_size, l.weights + w_index);
-		draw_distribution(&l.weights[w_index], filter_size, buff);
-	}
-	*/
 
 	//draw_distribution(l.weights, weights_size, NULL);
 	//draw_distribution(state.input, l.inputs, NULL);
 
-/*	
-#define W_MAX_VAL (256/2 - 1)	// 31-bit (32)
-#define I_MAX_VAL (256/2 - 1)	// 31-bit (32)
-#define R_MAX_VAL (256*128 - 1)	// 31-bit (32)
-//#define W_MULT (256.F*4)
-//#define I_MULT (16.F)
-#define I_MULT (l.input_quant_multipler)
-#define R_MULT (32)	// 4 - 32
-
 	typedef int16_t conv_t;
-	typedef int8_t weight_t;
-	typedef int8_t input_t;
-		
-	l.weights_quant_multipler /= 4;	// (int8 = optimal 4) (int16 = optimal 32) 8 - 32
-*/
-
-
-
-	typedef int16_t conv_t;
-	//typedef int8_t weight_t;
-	//typedef int8_t input_t;
-
-	//l.weights_quant_multipler /= 4;	// (int8 = optimal 4) (int16 = optimal 32) 8 - 32
-
-	// for int8 required 7-bit (1-bit for sign)
-
-	/*
-#define W_MAX_VAL (256*16 - 1)	// 12-bit (13)
-#define I_MAX_VAL (256/2 - 1)	// 7-bit (8)
-#define R_MAX_VAL (256*4 - 1)	// 10-bit (11)
-#define W_MULT (256.F/1)
-#define I_MULT (256.F/16)
-#define R_MULT (256.F/8)
-	typedef int16_t conv_t;
-	typedef int8_t input_t;
-	*/
-	
-	// Tiny-Yolo works successfully:
-	// int - with MULT=[256,512,1024,2048,4096] without MAX_VAL
-	// int - with MULT=256 with MAX_VAL=65535*16 and higher
-	// int - with W_MULT=512, I_MULT=8 with MAX_VAL=65535 and higher
-	// short - with W_MULT=256, I_MULT=16, R_MULT=8 with MAX_VAL=65535 and higher
-	// short - with W_MULT=512, I_MULT=16, R_MULT=16 with MAX_VAL=65535 and higher
-	// short - with W_MULT=2048, I_MULT=16, R_MULT=64 with MAX_VAL=65535 and higher
-	// short VOC+COCO - with W_MULT=1024, I_MULT=16, R_MULT=64 with MAX_VAL=65535 and higher
-	// FUSED short VOC+COCO - with W_MULT=256, I_MULT=256, R_MULT=128 with MAX_VAL=4096 and higher
-	// FUSED short VOC+COCO - with W_MULT=256, I_MULT=256, R_MULT=256 with W_MAX_VAL=I_MAX_VAL=4096, R_MAX_VAL=1024 and higher
-	// FUSED short VOC+COCO - with W_MULT=256, I_MULT=64, R_MULT=256 with W_MAX_VAL=4096, I_MAX_VAL=1024, R_MAX_VAL=1024 and higher
-	// FUSED short VOC+COCO - with W_MULT=256, I_MULT=16, R_MULT=32 with W_MAX_VAL=4096, I_MAX_VAL=256, R_MAX_VAL=1024 and higher
-
-	//int8_t *weights_q = calloc(weights_size, sizeof(int8_t));	// l.weights
-	//int8_t *input_q = calloc(l.inputs, sizeof(int8_t));	// state.input
 	conv_t *output_q = calloc(l.outputs, sizeof(conv_t));	// l.output
-
-	//for (i = 0; i < l.inputs; ++i){
-		//input_q[i] = state.input_int8[i];
-		//input_q[i] = state.input[i];
-		
-		//if (fabs(input_q[i]) > 127) printf(" fabs(input_q[i]) > 127 \n");
-	//}
-
-	//for (i = 0; i < l.inputs; ++i) state.input[i] = input_q[i];
-	//draw_distribution(state.input, l.inputs, NULL);
 
 	////////////////////////////////////
 	// cudnnConvolutionBiasActivationForward()
@@ -515,8 +439,8 @@ void forward_convolutional_layer_q(layer l, network_state state, float output_mu
 	#pragma omp parallel for  	// "omp parallel for" - automatic parallelization of loop by using OpenMP
 	for (fil = 0; fil < l.n; ++fil) {
 		for (j = 0; j < out_size; ++j)
-			output_q[fil*out_size + j] = biases_q[fil] * (l.weights_quant_multipler*l.input_quant_multipler / R_MULT);
-			//output_q[fil*out_size + j] = biases_q[fil] * (W_MULT*I_MULT / R_MULT);
+			//output_q[fil*out_size + j] = biases_q[fil] * (l.weights_quant_multipler*l.input_quant_multipler / R_MULT);
+			output_q[fil*out_size + j] = l.biases_quant[fil];
 		
 		int chan, y, x, f_y, f_x;
 		// channel index
@@ -531,8 +455,8 @@ void forward_convolutional_layer_q(layer l, network_state state, float output_mu
 					int const input_pre_index = chan*l.w*l.h;
 					//float sum = 0;
 
-					int16_t sum = 0;
-					//int32_t sum = 0;
+					//int16_t sum = 0;
+					int32_t sum = 0;
 
 					// filter - y
 					for (f_y = 0; f_y < l.size; ++f_y)
@@ -604,14 +528,11 @@ void forward_convolutional_layer_q(layer l, network_state state, float output_mu
 	//for (i = 0; i < l.outputs; ++i) l.output[i] = output_q[i] / (l.weights_quant_multipler*l.input_quant_multipler / (R_MULT));
 
 	for (i = 0; i < l.outputs; ++i) {
-		int16_t src;
+		conv_t src;
 		src = output_q[i] * output_multipler;
-		//l.output[i] = max_abs(src, I_MAX_VAL);
-
 		l.output_int8[i] = max_abs(src, I_MAX_VAL);
 	}
 
-	//free(input_q);
 	free(output_q);
 }
 
@@ -823,6 +744,7 @@ void forward_region_layer_q(const layer l, network_state state)
 		// softmax activation only for Classes probability
 		for (b = 0; b < l.batch; ++b) {
 			// for each item (x, y, anchor-index)
+			//#pragma omp parallel for
 			for (i = 0; i < l.h*l.w*l.n; ++i) {
 				int index = size*i + b*l.outputs;
 				softmax_q(l.output + index + 5, l.classes, 1, l.output + index + 5);
@@ -867,6 +789,7 @@ void yolov2_forward_network_q(network net, network_state state)
 			//printf("\n REORG \n");
 		}
 		else if (l.type == REGION) {
+			//#pragma omp parallel for
 			for (k = 0; k < l.inputs; ++k) {
 				state.input[k] = (float)state.input_int8[k] / 16;
 			}
@@ -898,7 +821,6 @@ float *network_predict_quantized(network net, float *input)
 	int k;
 	for (k = 0; k < net.w*net.h*net.c; ++k){
 		int32_t src = state.input[k] * 128;
-		//state.input[k] = max_abs(src, I_MAX_VAL);
 		state.input_int8[k] = max_abs(src, I_MAX_VAL);
 	}
 
