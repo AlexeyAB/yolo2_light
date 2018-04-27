@@ -92,7 +92,7 @@ void test_detector_cpu(char **names, char *cfgfile, char *weightfile, char *file
 	set_batch_network(&net, 1);					// network.c
 	srand(2222222);
 	yolov2_fuse_conv_batchnorm(net);
-	if (quantized) get_conv_weight_optimal_multipliers(net);
+	if (quantized) quantinization_and_get_multipliers(net);
 	clock_t time;
 	char buff[256];
 	char *input = buff;
@@ -341,7 +341,7 @@ void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const ch
 	yolov2_fuse_conv_batchnorm(net);
 	if (quantized) {
 		demo_quantized = 1;
-		get_conv_weight_optimal_multipliers(net);
+		quantinization_and_get_multipliers(net);
 	}
 	srand(2222222);
 

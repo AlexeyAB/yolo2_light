@@ -486,14 +486,15 @@ void forward_convolutional_layer_q(layer l, network_state state, float output_mu
 	// FUSED short VOC+COCO - with W_MULT=256, I_MULT=16, R_MULT=32 with W_MAX_VAL=4096, I_MAX_VAL=256, R_MAX_VAL=1024 and higher
 
 	//int8_t *weights_q = calloc(weights_size, sizeof(int8_t));	// l.weights
-	int8_t *input_q = calloc(l.inputs, sizeof(int8_t));	// state.input
+	//int8_t *input_q = calloc(l.inputs, sizeof(int8_t));	// state.input
 	conv_t *output_q = calloc(l.outputs, sizeof(conv_t));	// l.output
 
-	for (i = 0; i < l.inputs; ++i){
-		input_q[i] = state.input[i];
+	//for (i = 0; i < l.inputs; ++i){
+		//input_q[i] = state.input_int8[i];
+		//input_q[i] = state.input[i];
 		
 		//if (fabs(input_q[i]) > 127) printf(" fabs(input_q[i]) > 127 \n");
-	}
+	//}
 
 	//for (i = 0; i < l.inputs; ++i) state.input[i] = input_q[i];
 	//draw_distribution(state.input, l.inputs, NULL);
@@ -548,7 +549,7 @@ void forward_convolutional_layer_q(layer l, network_state state, float output_mu
 
 							//sum += state.input[input_index] * l.weights[weights_index];
 							// int16 += int8 * int8;
-							sum += (int16_t)input_q[input_index] * (int16_t)l.weights_int8[weights_index];
+							sum += (int16_t)state.input_int8[input_index] * (int16_t)l.weights_int8[weights_index];
 						}
 					}
 					// l.output[filters][width][height] += 
@@ -582,7 +583,7 @@ void forward_convolutional_layer_q(layer l, network_state state, float output_mu
 
 	// convolution as GEMM (as part of BLAS)
 	//for (i = 0; i < l.batch; ++i) {		
-		im2col_cpu_int8(input_q, l.c, l.h, l.w, l.size, l.stride, l.pad, b);	// here
+		im2col_cpu_int8(state.input_int8, l.c, l.h, l.w, l.size, l.stride, l.pad, b);	// here
 		//gemm_nn_int8_int16(m, n, k, 1, a, k, b, n, c, n);	// single-thread gemm
 		
 		int t;	// multi-thread gemm
@@ -605,16 +606,16 @@ void forward_convolutional_layer_q(layer l, network_state state, float output_mu
 	for (i = 0; i < l.outputs; ++i) {
 		int16_t src;
 		src = output_q[i] * output_multipler;
-		l.output[i] = max_abs(src, I_MAX_VAL);
+		//l.output[i] = max_abs(src, I_MAX_VAL);
 
-		l.output_int8[i] = l.output[i];
+		l.output_int8[i] = max_abs(src, I_MAX_VAL);
 	}
 
-	free(input_q);
+	//free(input_q);
 	free(output_q);
 }
 
-
+#define MIN_INT8 -127
 
 // MAX pooling layer
 void forward_maxpool_layer_q(const layer l, network_state state)
@@ -636,7 +637,7 @@ void forward_maxpool_layer_q(const layer l, network_state state)
 				// x - input
 				for (j = 0; j < w; ++j) {
 					int out_index = j + w*(i + h*(k + c*b));
-					float max = -FLT_MAX;
+					int8_t max = MIN_INT8;
 					int max_i = -1;
 					// pooling x-index
 					for (n = 0; n < l.size; ++n) {
@@ -647,12 +648,13 @@ void forward_maxpool_layer_q(const layer l, network_state state)
 							int index = cur_w + l.w*(cur_h + l.h*(k + b*l.c));
 							int valid = (cur_h >= 0 && cur_h < l.h &&
 								cur_w >= 0 && cur_w < l.w);
-							float val = (valid != 0) ? state.input[index] : -FLT_MAX;
+							int8_t val = (valid != 0) ? state.input_int8[index] : MIN_INT8;
 							max_i = (val > max) ? index : max_i;	// get max index
 							max = (val > max) ? val : max;			// get max value
 						}
 					}
-					l.output[out_index] = max;		// store max value
+					//l.output[out_index] = max;		// store max value
+					l.output_int8[out_index] = max;		// store max value
 					l.indexes[out_index] = max_i;	// store max index
 				}
 			}
@@ -669,11 +671,12 @@ void forward_route_layer_q(const layer l, network_state state)
 	// number of merged layers
 	for (i = 0; i < l.n; ++i) {
 		int index = l.input_layers[i];					// source layer index
-		float *input = state.net.layers[index].output;	// source layer output ptr
+		//float *input = state.net.layers[index].output;	// source layer output ptr
+		int8_t *input = state.net.layers[index].output_int8;	// source layer output ptr
 		int input_size = l.input_sizes[i];				// source layer size
 		// batch index
 		for (j = 0; j < l.batch; ++j) {
-			memcpy( l.output + offset + j*l.outputs, input + j*input_size, input_size*sizeof(float) );
+			memcpy( l.output_int8 + offset + j*l.outputs, input + j*input_size, input_size*sizeof(int8_t) );
 		}
 		offset += input_size;
 	}
@@ -682,8 +685,10 @@ void forward_route_layer_q(const layer l, network_state state)
 // Reorg layer - just change dimension sizes of the previous layer (some dimension sizes are increased by decreasing other)
 void forward_reorg_layer_q(const layer l, network_state state)
 {
-	float *out = l.output;
-	float *x = state.input;
+	//float *out = l.output;
+	//float *x = state.input;
+	int8_t *out = l.output_int8;
+	int8_t *x = state.input_int8;
 	int out_w = l.out_w;
 	int out_h = l.out_h;
 	int out_c = l.out_c;
@@ -764,7 +769,7 @@ void forward_region_layer_q(const layer l, network_state state)
 {
 	int i, b;
 	int size = l.coords + l.classes + 1;	// 4 Coords(x,y,w,h) + Classes + 1 Probability-t0
-	printf("\n l.coords = %d \n", l.coords);
+	//printf("\n l.coords = %d \n", l.coords);
 	memcpy(l.output, state.input, l.outputs*l.batch * sizeof(float));
 
 	//flatten(l.output, l.w*l.h, size*l.n, l.batch, 1);
@@ -847,19 +852,19 @@ void yolov2_forward_network_q(network net, network_state state)
 			++counter;
 
 			forward_convolutional_layer_q(l, state, output_multipler);
-			printf("\n CONVOLUTIONAL \t\t l.size = %d  \n", l.size);
+			//printf("\n CONVOLUTIONAL \t\t l.size = %d  \n", l.size);
 		}
 		else if (l.type == MAXPOOL) {
 			forward_maxpool_layer_q(l, state);
-			printf("\n MAXPOOL \t\t l.size = %d  \n", l.size);
+			//printf("\n MAXPOOL \t\t l.size = %d  \n", l.size);
 		}
 		else if (l.type == ROUTE) {
 			forward_route_layer_q(l, state);
-			printf("\n ROUTE \t\t\t l.n = %d  \n", l.n);
+			//printf("\n ROUTE \t\t\t l.n = %d  \n", l.n);
 		}
 		else if (l.type == REORG) {
 			forward_reorg_layer_q(l, state);
-			printf("\n REORG \n");
+			//printf("\n REORG \n");
 		}
 		else if (l.type == REGION) {
 			for (k = 0; k < l.inputs; ++k) {
@@ -893,8 +898,8 @@ float *network_predict_quantized(network net, float *input)
 	int k;
 	for (k = 0; k < net.w*net.h*net.c; ++k){
 		int32_t src = state.input[k] * 128;
-		state.input[k] = max_abs(src, I_MAX_VAL);
-		//state.input_int8[k] = max_abs(src, I_MAX_VAL);
+		//state.input[k] = max_abs(src, I_MAX_VAL);
+		state.input_int8[k] = max_abs(src, I_MAX_VAL);
 	}
 
 	yolov2_forward_network_q(net, state);	// network on CPU
@@ -983,8 +988,8 @@ void get_region_boxes_q(layer l, int w, int h, float thresh, float **probs, box 
 	}
 }
 
-// get multiplers for convolutional weights for quantinization
-void get_conv_weight_optimal_multipliers(network net)
+// Quantinization and get multiplers for convolutional weights for quantinization
+void quantinization_and_get_multipliers(network net)
 {
 	//float input_mult[] = { 16, 16, 16, 16, 16, 16, 16, 16, 16 };
 	//float input_mult[] = { 127, 2, 16, 16, 16, 32, 32, 16, 32 };
@@ -1006,6 +1011,7 @@ void get_conv_weight_optimal_multipliers(network net)
 			size_t const weights_size = l->size*l->size*l->c*l->n;
 			int k;
 
+			// get optimal multipliers - for Weights
 			float weights_multiplier = get_multiplier(l->weights, weights_size, 8);
 			l->weights_quant_multipler = weights_multiplier/4;	// manual shift 2 bits
 
@@ -1014,17 +1020,19 @@ void get_conv_weight_optimal_multipliers(network net)
 				l->weights_int8[k] = max_abs(w, W_MAX_VAL);
 			}
 			
+			// set manually optimal multipliers - for Inputs
 			// tiny
 			if (counter == 0) l->input_quant_multipler = 128;
 			else if(counter == 1) l->input_quant_multipler = 2;
 			else  l->input_quant_multipler = 16;
 			++counter;
 			
+			// calculate optimal multipliers - for Biases
 			float biases_multipler = (l->weights_quant_multipler*l->input_quant_multipler / R_MULT);
 			for (k = 0; k < l->n; ++k)
 				l->biases_quant[k] = l->biases[k] * biases_multipler;
 
-			printf(" Get optimal multiplers for Input and Conv-weights for quantinization %g, input %g \n", 
+			printf(" Get optimal multiplers for Input and Conv-weights %g, input %g \n", 
 				l->weights_quant_multipler, l->input_quant_multipler);
 		}
 		else {

@@ -375,7 +375,7 @@ struct layer {
 	float *col_image;
 	int   * input_layers;
 	int   * input_sizes;
-	float * delta;
+	//float * delta;
 	float * output;
 	int8_t * output_int8;
 	float * squared;
@@ -385,8 +385,8 @@ struct layer {
 	float * mean;
 	float * variance;
 
-	float * mean_delta;
-	float * variance_delta;
+	//float * mean_delta;
+	//float * variance_delta;
 
 	float * rolling_mean;
 	float * rolling_variance;
@@ -720,8 +720,8 @@ float *network_predict_quantized(network net, float *input);
 // fuse convolutional and batch_norm weights into one convolutional-layer
 void yolov2_fuse_conv_batchnorm(network net);
 
-// get multiplers for convolutional weights for quantinization
-void get_conv_weight_optimal_multipliers(network net);
+// Quantinization and get multiplers for convolutional weights for quantinization
+void quantinization_and_get_multipliers(network net);
 
 // -------------- yolov2_forward_network_gpu.c --------------------
 

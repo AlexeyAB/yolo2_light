@@ -690,15 +690,15 @@ void free_layer(layer l)
 	if (l.weights)            free(l.weights);
 	if (l.weights_int8)       free(l.weights_int8);
 	//if (l.weight_updates)     free(l.weight_updates);
-	if (l.delta)              free(l.delta);
+	//if (l.delta)              free(l.delta);
 	if (l.output)             free(l.output);
 	if (l.squared)            free(l.squared);
 	if (l.norms)              free(l.norms);
 	if (l.spatial_mean)       free(l.spatial_mean);
 	if (l.mean)               free(l.mean);
 	if (l.variance)           free(l.variance);
-	if (l.mean_delta)         free(l.mean_delta);
-	if (l.variance_delta)     free(l.variance_delta);
+	//if (l.mean_delta)         free(l.mean_delta);
+	//if (l.variance_delta)     free(l.variance_delta);
 	if (l.rolling_mean)       free(l.rolling_mean);
 	if (l.rolling_variance)   free(l.rolling_variance);
 	if (l.x)                  free(l.x);
@@ -768,7 +768,7 @@ softmax_layer make_softmax_layer(int batch, int inputs, int groups)
 	l.inputs = inputs;
 	l.outputs = inputs;
 	l.output = calloc(inputs*batch, sizeof(float));
-	l.delta = calloc(inputs*batch, sizeof(float));
+	//l.delta = calloc(inputs*batch, sizeof(float));
 
 	// commented only for this custom version of Yolo v2
 	//l.forward = forward_softmax_layer;
@@ -817,7 +817,8 @@ layer make_reorg_layer(int batch, int w, int h, int c, int stride, int reverse)
 	l.inputs = h*w*c;
 	int output_size = l.out_h * l.out_w * l.out_c * batch;
 	l.output = calloc(output_size, sizeof(float));
-	l.delta = calloc(output_size, sizeof(float));
+	l.output_int8 = calloc(output_size, sizeof(int8_t));
+	//l.delta = calloc(output_size, sizeof(float));
 
 	// commented only for this custom version of Yolo v2
 	//l.forward = forward_reorg_layer;
@@ -858,8 +859,9 @@ route_layer make_route_layer(int batch, int n, int *input_layers, int *input_siz
 	fprintf(stderr, "\n");
 	l.outputs = outputs;
 	l.inputs = outputs;
-	l.delta = calloc(outputs*batch, sizeof(float));
-	l.output = calloc(outputs*batch, sizeof(float));;
+	//l.delta = calloc(outputs*batch, sizeof(float));
+	l.output = calloc(outputs*batch, sizeof(float));
+	l.output_int8 = calloc(outputs*batch, sizeof(int8_t));
 
 	// commented only for this custom version of Yolo v2
 	//l.forward = forward_route_layer;
@@ -899,7 +901,7 @@ region_layer make_region_layer(int batch, int w, int h, int n, int classes, int 
 	l.outputs = h*w*n*(classes + coords + 1);
 	l.inputs = l.outputs;
 	l.truths = 30 * (5);
-	l.delta = calloc(batch*l.outputs, sizeof(float));
+	//l.delta = calloc(batch*l.outputs, sizeof(float));
 	l.output = calloc(batch*l.outputs, sizeof(float));
 	int i;
 	for (i = 0; i < n * 2; ++i) {
@@ -950,7 +952,8 @@ maxpool_layer make_maxpool_layer(int batch, int h, int w, int c, int size, int s
 	int output_size = l.out_h * l.out_w * l.out_c * batch;
 	l.indexes = calloc(output_size, sizeof(int));
 	l.output = calloc(output_size, sizeof(float));
-	l.delta = calloc(output_size, sizeof(float));
+	l.output_int8 = calloc(output_size, sizeof(int8_t));
+	//l.delta = calloc(output_size, sizeof(float));
 	// commented only for this custom version of Yolo v2
 	//l.forward = forward_maxpool_layer;
 	//l.backward = backward_maxpool_layer;
@@ -1077,7 +1080,7 @@ convolutional_layer make_convolutional_layer(int batch, int h, int w, int c, int
 
 	l.output = calloc(l.batch*l.outputs, sizeof(float));
 	l.output_int8 = calloc(l.batch*l.outputs, sizeof(int8_t));
-	l.delta = calloc(l.batch*l.outputs, sizeof(float));
+	//l.delta = calloc(l.batch*l.outputs, sizeof(float));
 
 	// commented only for this custom version of Yolo v2
 	///l.forward = forward_convolutional_layer;
@@ -1103,8 +1106,8 @@ convolutional_layer make_convolutional_layer(int batch, int h, int w, int c, int
 		l.mean = calloc(n, sizeof(float));
 		l.variance = calloc(n, sizeof(float));
 
-		l.mean_delta = calloc(n, sizeof(float));
-		l.variance_delta = calloc(n, sizeof(float));
+		//l.mean_delta = calloc(n, sizeof(float));
+		//l.variance_delta = calloc(n, sizeof(float));
 
 		l.rolling_mean = calloc(n, sizeof(float));
 		l.rolling_variance = calloc(n, sizeof(float));
