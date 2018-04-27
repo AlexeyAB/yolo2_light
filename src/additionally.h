@@ -360,13 +360,15 @@ struct layer {
 	float *binary_weights;
 
 	float *biases;
-	float *bias_updates;
+	float *biases_quant;
+	//float *bias_updates;
 
 	float *scales;
-	float *scale_updates;
+	//float *scale_updates;
 
 	float *weights;
-	float *weight_updates;
+	int8_t * weights_int8;
+	//float *weight_updates;
 	float weights_quant_multipler;
 	float input_quant_multipler;
 
@@ -455,13 +457,13 @@ struct layer {
 	float * x_gpu;
 	float * x_norm_gpu;
 	float * weights_gpu;
-	float * weight_updates_gpu;
+	//float * weight_updates_gpu;
 
 	float * biases_gpu;
-	float * bias_updates_gpu;
+	//float * bias_updates_gpu;
 
 	float * scales_gpu;
-	float * scale_updates_gpu;
+	//float * scale_updates_gpu;
 
 	float * output_gpu;
 	float * delta_gpu;
@@ -567,6 +569,7 @@ typedef struct network {
 typedef struct network_state {
 	float *truth;
 	float *input;
+	int8_t *input_int8;
 	float *delta;
 	float *workspace;
 	int train;

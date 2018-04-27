@@ -683,11 +683,13 @@ void free_layer(layer l)
 	if (l.concat_delta)       free(l.concat_delta);
 	if (l.binary_weights)     free(l.binary_weights);
 	if (l.biases)             free(l.biases);
-	if (l.bias_updates)       free(l.bias_updates);
+	if (l.biases_quant)       free(l.biases_quant);
+	//if (l.bias_updates)       free(l.bias_updates);
 	if (l.scales)             free(l.scales);
-	if (l.scale_updates)      free(l.scale_updates);
+	//if (l.scale_updates)      free(l.scale_updates);
 	if (l.weights)            free(l.weights);
-	if (l.weight_updates)     free(l.weight_updates);
+	if (l.weights_int8)       free(l.weights_int8);
+	//if (l.weight_updates)     free(l.weight_updates);
 	if (l.delta)              free(l.delta);
 	if (l.output)             free(l.output);
 	if (l.squared)            free(l.squared);
@@ -738,11 +740,11 @@ void free_layer(layer l)
 	if (l.x_gpu)                   cuda_free(l.x_gpu);
 	if (l.x_norm_gpu)              cuda_free(l.x_norm_gpu);
 	if (l.weights_gpu)             cuda_free(l.weights_gpu);
-	if (l.weight_updates_gpu)      cuda_free(l.weight_updates_gpu);
+	//if (l.weight_updates_gpu)      cuda_free(l.weight_updates_gpu);
 	if (l.biases_gpu)              cuda_free(l.biases_gpu);
-	if (l.bias_updates_gpu)        cuda_free(l.bias_updates_gpu);
+	//if (l.bias_updates_gpu)        cuda_free(l.bias_updates_gpu);
 	if (l.scales_gpu)              cuda_free(l.scales_gpu);
-	if (l.scale_updates_gpu)       cuda_free(l.scale_updates_gpu);
+	//if (l.scale_updates_gpu)       cuda_free(l.scale_updates_gpu);
 	if (l.output_gpu)              cuda_free(l.output_gpu);
 	if (l.delta_gpu)               cuda_free(l.delta_gpu);
 	if (l.rand_gpu)                cuda_free(l.rand_gpu);
@@ -893,7 +895,7 @@ region_layer make_region_layer(int batch, int w, int h, int n, int classes, int 
 	l.coords = coords;
 	l.cost = calloc(1, sizeof(float));
 	l.biases = calloc(n * 2, sizeof(float));
-	l.bias_updates = calloc(n * 2, sizeof(float));
+	//l.bias_updates = calloc(n * 2, sizeof(float));
 	l.outputs = h*w*n*(classes + coords + 1);
 	l.inputs = l.outputs;
 	l.truths = 30 * (5);
@@ -1055,10 +1057,12 @@ convolutional_layer make_convolutional_layer(int batch, int h, int w, int c, int
 	l.batch_normalize = batch_normalize;
 
 	l.weights = calloc(c*n*size*size, sizeof(float));
-	l.weight_updates = calloc(c*n*size*size, sizeof(float));
+	l.weights_int8 = calloc(c*n*size*size, sizeof(int8_t));
+	//l.weight_updates = calloc(c*n*size*size, sizeof(float));
 
 	l.biases = calloc(n, sizeof(float));
-	l.bias_updates = calloc(n, sizeof(float));
+	l.biases_quant = calloc(n, sizeof(float));
+	//l.bias_updates = calloc(n, sizeof(float));
 
 	// float scale = 1./sqrt(size*size*c);
 	float scale = sqrt(2. / (size*size*c));
@@ -1072,6 +1076,7 @@ convolutional_layer make_convolutional_layer(int batch, int h, int w, int c, int
 	l.inputs = l.w * l.h * l.c;
 
 	l.output = calloc(l.batch*l.outputs, sizeof(float));
+	l.output_int8 = calloc(l.batch*l.outputs, sizeof(int8_t));
 	l.delta = calloc(l.batch*l.outputs, sizeof(float));
 
 	// commented only for this custom version of Yolo v2
@@ -1090,7 +1095,7 @@ convolutional_layer make_convolutional_layer(int batch, int h, int w, int c, int
 
 	if (batch_normalize) {
 		l.scales = calloc(n, sizeof(float));
-		l.scale_updates = calloc(n, sizeof(float));
+		//l.scale_updates = calloc(n, sizeof(float));
 		for (i = 0; i < n; ++i) {
 			l.scales[i] = 1;
 		}
