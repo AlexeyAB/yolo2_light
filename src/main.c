@@ -474,6 +474,7 @@ void run_detector(int argc, char **argv)
 	//else if (0 == strcmp(argv[2], "train")) train_detector(datacfg, cfg, weights, gpus, ngpus, clear);
 	//else if (0 == strcmp(argv[2], "valid")) validate_detector(datacfg, cfg, weights);
 	//else if (0 == strcmp(argv[2], "recall")) validate_detector_recall(datacfg, cfg, weights);
+	else if (0 == strcmp(argv[2], "map")) validate_detector_map(obj_names, cfg, weights, thresh, quantized);
 	else if (0 == strcmp(argv[2], "demo")) {
 		demo(cfg, weights, thresh, cam_index, filename, names, classes, frame_skip, prefix, quantized);
 	}

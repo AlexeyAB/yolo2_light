@@ -293,7 +293,10 @@ void gemm_nn_int8_int16_conv16(int M, int N, int K, int8_t ALPHA,
 				c_tmp[j] += A_PART*B[k*ldb + j] / (INTERMEDIATE_MULT);
 			}
 		}
-		for (j = 0; j < N; ++j) C[i*ldc + j] += c_tmp[j] / FINAL_MULT;
+		for (j = 0; j < N; ++j) {
+			C[i*ldc + j] += c_tmp[j] / FINAL_MULT;
+			c_tmp[j] = 0;
+		}
 	}
 	free(c_tmp);
 }
@@ -366,7 +369,10 @@ void gemm_nn_int8_int16(int M, int N, int K, int8_t ALPHA,
 				c_tmp[j] += A_PART*B[k*ldb + j];
 			}
 		}
-		for (j = 0; j < N; ++j) C[i*ldc + j] += max_abs(c_tmp[j] / (R_MULT), (256 * 128 - 1));
+		for (j = 0; j < N; ++j) {
+			C[i*ldc + j] += max_abs(c_tmp[j] / (R_MULT), (256 * 128 - 1));
+			c_tmp[j] = 0;
+		}
 		//for (j = 0; j < N; ++j) C[i*ldc + j] += c_tmp[j] / (R_MULT);
 	}
 	free(c_tmp);
@@ -437,7 +443,10 @@ void gemm_nn_int8_int16(int M, int N, int K, int8_t ALPHA,
 				c_tmp[j] += A_PART*B[k*ldb + j];
 			}
 		}
-		for (j = 0; j < N; ++j) C[i*ldc + j] += max_abs(c_tmp[j] / (R_MULT), (256 * 128 - 1));
+		for (j = 0; j < N; ++j) {
+			C[i*ldc + j] += max_abs(c_tmp[j] / (R_MULT), (256 * 128 - 1));
+			c_tmp[j] = 0;
+		}
 		//for (j = 0; j < N; ++j) C[i*ldc + j] += c_tmp[j] / (R_MULT);
 	}
 	free(c_tmp);
@@ -452,19 +461,22 @@ void gemm_nn_int8_int16(int M, int N, int K, int8_t ALPHA,
 	int16_t *C, int ldc)
 {
 	int32_t *tmp = calloc(N, sizeof(int32_t));
-	int i, j, k;
+	int i, j, c_tmp;
 	for (i = 0; i < M; ++i) {
 		for (k = 0; k < K; ++k) {
 			register int16_t A_PART = ALPHA*A[i*lda + k];
 			//#pragma simd parallel for
 			for (j = 0; j < N; ++j) {
-				tmp[j] += A_PART*B[k*ldb + j];
+				c_tmp[j] += A_PART*B[k*ldb + j];
 				//C[i*ldc + j] += max_abs(A_PART*B[k*ldb + j] / (R_MULT), (256 * 128 - 1));
 			}
 		}
-		for (j = 0; j < N; ++j) C[i*ldc + j] += max_abs(tmp[j] / (R_MULT), (256 * 128 - 1));
+		for (j = 0; j < N; ++j) {
+			C[i*ldc + j] += max_abs(c_tmp[j] / (R_MULT), (256 * 128 - 1));
+			c_tmp[j] = 0;
+		}
 	}
-	free(tmp);
+	free(c_tmp);
 }
 #endif	// SSE41 or AVX
 
@@ -577,8 +589,8 @@ void forward_convolutional_layer_q(layer l, network_state state, int return_floa
 		int t;	// multi-thread gemm
 		#pragma omp parallel for
 		for (t = 0; t < m; ++t) {
-			gemm_nn_int8_int16(1, n, k, 1, a + t*k, k, b, n, c + t*n, n);
-			//gemm_nn_int8_int16_conv16(1, n, k, 1, a + t*k, k, b, n, c + t*n, n);
+			//gemm_nn_int8_int16(1, n, k, 1, a + t*k, k, b, n, c + t*n, n);
+			gemm_nn_int8_int16_conv16(1, n, k, 1, a + t*k, k, b, n, c + t*n, n);
 		}		
 	//}
 #endif

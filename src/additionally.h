@@ -715,6 +715,9 @@ void load_weights_upto_cpu(network *net, char *filename, int cutoff);
 // detect on CPU: yolov2_forward_network.c
 float *network_predict_cpu(network net, float *input);
 
+// calculate mAP
+void validate_detector_map(char *datacfg, char *cfgfile, char *weightfile, float thresh_calc_avg_iou, int quantized);
+
 // quantizized
 float *network_predict_quantized(network net, float *input);
 
