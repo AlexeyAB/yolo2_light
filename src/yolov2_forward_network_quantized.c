@@ -452,6 +452,14 @@ void gemm_nn_int8_int16(int M, int N, int K, int8_t ALPHA,
 	free(c_tmp);
 }
 
+void gemm_nn_int8_int16_conv16(int M, int N, int K, int8_t ALPHA,
+	int8_t *A, int lda,
+	int8_t *B, int ldb,
+	int16_t *C, int ldc)
+{
+	printf(" gemm_nn_int8_int16_conv16() isn't implemented for SSE4.1 \n");
+}
+
 #else
 
 // 2.9 sec
@@ -460,8 +468,8 @@ void gemm_nn_int8_int16(int M, int N, int K, int8_t ALPHA,
 	int8_t *B, int ldb,
 	int16_t *C, int ldc)
 {
-	int32_t *tmp = calloc(N, sizeof(int32_t));
-	int i, j, c_tmp;
+	int32_t *c_tmp = calloc(N, sizeof(int32_t));
+	int i, j, k;
 	for (i = 0; i < M; ++i) {
 		for (k = 0; k < K; ++k) {
 			register int16_t A_PART = ALPHA*A[i*lda + k];
@@ -477,6 +485,14 @@ void gemm_nn_int8_int16(int M, int N, int K, int8_t ALPHA,
 		}
 	}
 	free(c_tmp);
+}
+
+void gemm_nn_int8_int16_conv16(int M, int N, int K, int8_t ALPHA,
+	int8_t *A, int lda,
+	int8_t *B, int ldb,
+	int16_t *C, int ldc)
+{
+	printf(" gemm_nn_int8_int16_conv16() isn't implemented \n");
 }
 #endif	// SSE41 or AVX
 
@@ -555,7 +571,7 @@ void forward_convolutional_layer_q(layer l, network_state state, int return_floa
 
 							//sum += state.input[input_index] * l.weights[weights_index];
 							// int16 += int8 * int8;
-							sum += (conv_t)state.input_int8[input_index] * (conv_t)l.weights_int8[weights_index];
+							sum += (int32_t)state.input_int8[input_index] * (int32_t)l.weights_int8[weights_index];
 						}
 					}
 					// l.output[filters][width][height] += 
@@ -620,7 +636,7 @@ void forward_convolutional_layer_q(layer l, network_state state, int return_floa
 	if (return_float) {
 		// y - FLOAT, x,w - X_INT8 / X_INT8x4
 		for (i = 0; i < l.outputs; ++i) {
-			l.output[i] = output_q[i] / 8;	// /8	// float32
+			l.output[i] = (float)output_q[i] / 8.F;	// /8	// float32
 		}
 	}
 	else
@@ -884,7 +900,7 @@ void yolov2_forward_network_q(network net, network_state state)
 		}
 		else if (l.type == REGION) {
 			forward_region_layer_q(l, state);
-			printf("\n REGION \n");
+			//printf("\n REGION \n");
 		}
 		else {
 			printf("\n layer: %d \n", l.type);

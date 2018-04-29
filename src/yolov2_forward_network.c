@@ -269,7 +269,6 @@ void forward_region_layer_cpu(const layer l, network_state state)
 {
 	int i, b;
 	int size = l.coords + l.classes + 1;	// 4 Coords(x,y,w,h) + Classes + 1 Probability-t0
-	printf("\n l.coords = %d \n", l.coords);
 	memcpy(l.output, state.input, l.outputs*l.batch * sizeof(float));
 
 	//flatten(l.output, l.w*l.h, size*l.n, l.batch, 1);
@@ -346,23 +345,23 @@ void yolov2_forward_network_cpu(network net, network_state state)
 
 		if (l.type == CONVOLUTIONAL) {
 			forward_convolutional_layer_cpu(l, state);
-			printf("\n CONVOLUTIONAL \t\t l.size = %d  \n", l.size);
+			//printf("\n CONVOLUTIONAL \t\t l.size = %d  \n", l.size);
 		}
 		else if (l.type == MAXPOOL) {
 			forward_maxpool_layer_cpu(l, state);
-			printf("\n MAXPOOL \t\t l.size = %d  \n", l.size);
+			//printf("\n MAXPOOL \t\t l.size = %d  \n", l.size);
 		}
 		else if (l.type == ROUTE) {
 			forward_route_layer_cpu(l, state);
-			printf("\n ROUTE \t\t\t l.n = %d  \n", l.n);
+			//printf("\n ROUTE \t\t\t l.n = %d  \n", l.n);
 		}
 		else if (l.type == REORG) {
 			forward_reorg_layer_cpu(l, state);
-			printf("\n REORG \n");
+			//printf("\n REORG \n");
 		}
 		else if (l.type == REGION) {
 			forward_region_layer_cpu(l, state);
-			printf("\n REGION \n");
+			//printf("\n REGION \n");
 		}
 		else {
 			printf("\n layer: %d \n", l.type);

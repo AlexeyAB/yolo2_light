@@ -142,23 +142,23 @@ void forward_network_gpu_cudnn(network net, network_state state)
 
 		if (l.type == CONVOLUTIONAL) {
 			forward_convolutional_layer_gpu_cudnn(l, state);
-			printf("\n CONVOLUTIONAL \t\t l.size = %d  \n", l.size);
+			//printf("\n CONVOLUTIONAL \t\t l.size = %d  \n", l.size);
 		}
 		else if (l.type == MAXPOOL) {
 			forward_maxpool_layer_gpu_cuda(l, state);
-			printf("\n MAXPOOL \t\t l.size = %d  \n", l.size);
+			//printf("\n MAXPOOL \t\t l.size = %d  \n", l.size);
 		}
 		else if (l.type == ROUTE) {
 			forward_route_layer_gpu_cuda(l, state);
-			printf("\n ROUTE \n");
+			//printf("\n ROUTE \n");
 		}
 		else if (l.type == REORG) {
 			forward_reorg_layer_gpu_cuda(l, state);
-			printf("\n REORG \n");
+			//printf("\n REORG \n");
 		}
 		else if (l.type == REGION) {
 			forward_region_layer_gpu_cuda(l, state);
-			printf("\n REGION \n");
+			//printf("\n REGION \n");
 		}
 		else {
 			printf("\n layer: %d \n", l.type);

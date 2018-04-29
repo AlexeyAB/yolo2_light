@@ -2284,12 +2284,14 @@ int gettimeofday(struct timeval *tv, struct timezone *tz)
 // Calculate mAP and TP/FP/FN, IoU, F1
 
 #include "pthread.h"
+//#include "box.h"
 
 // from: box.h
 typedef struct {
 	float x, y, w, h;
 } box;
 
+float box_iou(box a, box b);
 
 typedef enum {
 	CLASSIFICATION_DATA, DETECTION_DATA, CAPTCHA_DATA, REGION_DATA, IMAGE_DATA, LETTERBOX_DATA, COMPARE_DATA, WRITING_DATA, SWAG_DATA, TAG_DATA, OLD_CLASSIFICATION_DATA, STUDY_DATA, DET_DATA, SUPER_DATA
@@ -2648,6 +2650,7 @@ void validate_detector_map(char *datacfg, char *cfgfile, char *weightfile, float
 	}
 	set_batch_network(&net, 1);
 	yolov2_fuse_conv_batchnorm(net);
+	if (quantized) quantinization_and_get_multipliers(net);
 	srand(time(0));
 
 	list *plist = get_paths(valid_images);
@@ -2854,8 +2857,9 @@ void validate_detector_map(char *datacfg, char *cfgfile, char *weightfile, float
 		}
 	}
 
-	if ((tp_for_thresh + fp_for_thresh) > 0)
+	if ((tp_for_thresh + fp_for_thresh) > 0) {
 		avg_iou = avg_iou / (tp_for_thresh + fp_for_thresh);
+	}
 
 
 	// SORT(detections)
