@@ -6,7 +6,7 @@ KernelLauncher::KernelLauncher(cl_device_id device_id, cl_kernel *kernel, cl_com
     this->_pKernel = kernel;
     this->_pQueue = queue;
     this->_dimensions = -1;
-	_device_id = device_id;
+    _device_id = device_id;
     _globalWorkSize[0] = _globalWorkSize[1] = _globalWorkSize[2] =
             _localWorkSize[0] = _localWorkSize[1] = _localWorkSize[2] = NULL;
 
@@ -19,18 +19,18 @@ KernelLauncher::KernelLauncher(cl_device_id device_id, cl_kernel *kernel, cl_com
     for(int i=0; i<_numArgs; i++)
         this->_argListData[i] = false;
 
-	cl_int err = clGetKernelWorkGroupInfo(*_pKernel, _device_id,
-		CL_KERNEL_WORK_GROUP_SIZE, sizeof(size_t), &_optimal_local_workgroup_size, NULL);
-	//err = clGetKernelWorkGroupInfo(kernel, device_id, CL_KERNEL_WORK_GROUP_SIZE, sizeof(local), &local, NULL);
+    cl_int err = clGetKernelWorkGroupInfo(*_pKernel, _device_id,
+        CL_KERNEL_WORK_GROUP_SIZE, sizeof(size_t), &_optimal_local_workgroup_size, NULL);
+    //err = clGetKernelWorkGroupInfo(kernel, device_id, CL_KERNEL_WORK_GROUP_SIZE, sizeof(local), &local, NULL);
 
-	size_t compileWorkGroupSize[3];
-	err = clGetKernelWorkGroupInfo(*_pKernel, _device_id,
-		CL_KERNEL_COMPILE_WORK_GROUP_SIZE,
-		sizeof(size_t) * 3,
-		compileWorkGroupSize,
-		NULL);
+    size_t compileWorkGroupSize[3];
+    err = clGetKernelWorkGroupInfo(*_pKernel, _device_id,
+        CL_KERNEL_COMPILE_WORK_GROUP_SIZE,
+        sizeof(size_t) * 3,
+        compileWorkGroupSize,
+        NULL);
 
-	_kernel_name = kernelName;
+    _kernel_name = kernelName;
 
 }
 
@@ -47,41 +47,41 @@ int KernelLauncher::countArgs()
 
 float KernelLauncher::run(bool profile, bool block)
 {
-	double total = 0;
-	cl_int status = CL_SUCCESS;
-	cl_event execEvent = NULL;
+    double total = 0;
+    cl_int status = CL_SUCCESS;
+    cl_event execEvent = NULL;
 
-	status = clEnqueueNDRangeKernel(*_pQueue, *_pKernel, _dimensions,
-			NULL, _globalWorkSize, _localWorkSize, 0,
-			NULL, (profile? &execEvent: NULL));
+    status = clEnqueueNDRangeKernel(*_pQueue, *_pKernel, _dimensions,
+            NULL, _globalWorkSize, _localWorkSize, 0,
+            NULL, (profile? &execEvent: NULL));
 
-	if (status == CL_SUCCESS && block)
-		clFinish(*_pQueue);
+    if (status == CL_SUCCESS && block)
+        clFinish(*_pQueue);
 
-	if (profile && status == CL_SUCCESS) {
+    if (profile && status == CL_SUCCESS) {
 
-		clWaitForEvents(1, &execEvent);
-		long long start, end;
-		status = clGetEventProfilingInfo(execEvent, CL_PROFILING_COMMAND_START,
-			sizeof(start), &start, NULL);
-		status = clGetEventProfilingInfo(execEvent, CL_PROFILING_COMMAND_END,
-			sizeof(end), &end, NULL);
+        clWaitForEvents(1, &execEvent);
+        long long start, end;
+        status = clGetEventProfilingInfo(execEvent, CL_PROFILING_COMMAND_START,
+            sizeof(start), &start, NULL);
+        status = clGetEventProfilingInfo(execEvent, CL_PROFILING_COMMAND_END,
+            sizeof(end), &end, NULL);
 
-		total = (double)(end - start) / 1e6; /* Convert nanoseconds to msecs */
-		printf("Total kernel time was {%5.3f} msecs - %s \n", total, _kernel_name.c_str());
-		
-		clReleaseEvent(execEvent);
-	}
+        total = (double)(end - start) / 1e6; /* Convert nanoseconds to msecs */
+        printf("Total kernel time was {%5.3f} msecs - %s \n", total, _kernel_name.c_str());
+        
+        clReleaseEvent(execEvent);
+    }
 
-	if (status != CL_SUCCESS) {
+    if (status != CL_SUCCESS) {
 
-		char * kernelName = (char*)_kernel_name.c_str();
-		int z = 0;
-		z++;
-	}
+        char * kernelName = (char*)_kernel_name.c_str();
+        int z = 0;
+        z++;
+    }
 
-	//DEBUG_CL(status);
-	return (float)total;
+    //DEBUG_CL(status);
+    return (float)total;
 }
 KernelLauncher& KernelLauncher::global(const int g) {
     if (_dimensions == -1) _dimensions = 1;

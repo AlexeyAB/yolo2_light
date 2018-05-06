@@ -26,8 +26,8 @@ limitations under the License.*/
 
 ///!TODO: Use bits as enum value
 typedef enum {
-	IV_CHAR_FILE_OPEN_FAIL = 0,
-	IV_CHAR_FILE_STATUS_FAIL
+    IV_CHAR_FILE_OPEN_FAIL = 0,
+    IV_CHAR_FILE_STATUS_FAIL
 }IV_ERRORS_INFO;
 
 const char* getCLErrorString(int err);
@@ -43,7 +43,7 @@ const char* getCLErrorString(int err);
 //General defines
 #define MAX_STR_LEN          256
 #define HALF_STR_LEN         MAX_STR_LEN/2
-#define Q_STR_LEN   	 	 HALF_STR_LEN/2
+#define Q_STR_LEN             HALF_STR_LEN/2
 
 //OpenCL related
 #define OCL_STATUS_READY          0

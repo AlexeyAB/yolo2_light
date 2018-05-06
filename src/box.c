@@ -236,7 +236,7 @@ typedef struct{
     float **probs;
 } sortable_bbox;
 
-int nms_comparator(const void *pa, const void *pb)
+int nms_comparator_v2(const void *pa, const void *pb)
 {
     sortable_bbox a = *(sortable_bbox *)pa;
     sortable_bbox b = *(sortable_bbox *)pb;
@@ -246,7 +246,7 @@ int nms_comparator(const void *pa, const void *pb)
     return 0;
 }
 
-void do_nms_sort(box *boxes, float **probs, int total, int classes, float thresh)
+void do_nms_sort_v2(box *boxes, float **probs, int total, int classes, float thresh)
 {
     int i, j, k;
     sortable_bbox *s = calloc(total, sizeof(sortable_bbox));
@@ -261,7 +261,7 @@ void do_nms_sort(box *boxes, float **probs, int total, int classes, float thresh
         for(i = 0; i < total; ++i){
             s[i].class = k;
         }
-        qsort(s, total, sizeof(sortable_bbox), nms_comparator);
+        qsort(s, total, sizeof(sortable_bbox), nms_comparator_v2);
         for(i = 0; i < total; ++i){
             if(probs[s[i].index][k] == 0) continue;
             box a = boxes[s[i].index];
@@ -274,6 +274,57 @@ void do_nms_sort(box *boxes, float **probs, int total, int classes, float thresh
         }
     }
     free(s);
+}
+
+
+int nms_comparator(const void *pa, const void *pb)
+{
+    detection a = *(detection *)pa;
+    detection b = *(detection *)pb;
+    float diff = 0;
+    if (b.sort_class >= 0) {
+        diff = a.prob[b.sort_class] - b.prob[b.sort_class];
+    }
+    else {
+        diff = a.objectness - b.objectness;
+    }
+    if (diff < 0) return 1;
+    else if (diff > 0) return -1;
+    return 0;
+}
+
+void do_nms_sort(detection *dets, int total, int classes, float thresh)
+{
+    int i, j, k;
+    k = total - 1;
+    for (i = 0; i <= k; ++i) {
+        if (dets[i].objectness == 0) {
+            detection swap = dets[i];
+            dets[i] = dets[k];
+            dets[k] = swap;
+            --k;
+            --i;
+        }
+    }
+    total = k + 1;
+
+    for (k = 0; k < classes; ++k) {
+        for (i = 0; i < total; ++i) {
+            dets[i].sort_class = k;
+        }
+        qsort(dets, total, sizeof(detection), nms_comparator);
+        for (i = 0; i < total; ++i) {
+            //printf("  k = %d, \t i = %d \n", k, i);
+            if (dets[i].prob[k] == 0) continue;
+            box a = dets[i].bbox;
+            for (j = i + 1; j < total; ++j) {
+                box b = dets[j].bbox;
+                if (box_iou(a, b) > thresh) {
+                    dets[j].prob[k] = 0;
+                }
+            }
+        }
+    }
 }
 
 void do_nms(box *boxes, float **probs, int total, int classes, float thresh)

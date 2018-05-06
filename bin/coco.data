@@ -1,0 +1,8 @@
+classes= 80
+train  = data/coco/trainvalno5k.txt
+valid  = data/5k.txt
+#valid = data/coco_val_5k.list
+names = coco.names
+backup = backup/
+eval=coco
+

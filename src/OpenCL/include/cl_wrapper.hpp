@@ -21,15 +21,15 @@ public:
     void getContextnQueue();
     Program* createProgram(std::vector<std::string> kernelFilePath);
 
-	cl_command_queue* getQueue() {
+    cl_command_queue* getQueue() {
 
-		return &_queue;
-	}
+        return &_queue;
+    }
 
-	cl_context* getContext() {
+    cl_context* getContext() {
 
-		return &_context;
-	}
+        return &_context;
+    }
 
     //>>>>>>>>>>>>>>>>>Get Info
     int getNumberOfPlatforms()

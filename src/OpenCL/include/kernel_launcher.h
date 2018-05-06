@@ -93,10 +93,10 @@ public:
         clReleaseKernel(*_pKernel);
     }
 
-	size_t GetOptimalLWGSize() {
+    size_t GetOptimalLWGSize() {
 
-		return _optimal_local_workgroup_size;
-	}
+        return _optimal_local_workgroup_size;
+    }
 
 protected:
 private:
@@ -106,10 +106,10 @@ private:
     size_t              _globalWorkSize[3];
     size_t              _localWorkSize[3];
     cl_int              _dimensions;
-	std::string			_kernel_name;
+    std::string            _kernel_name;
     cl_bool*            _argListData;
-	cl_device_id        _device_id;
-	size_t              _optimal_local_workgroup_size;
+    cl_device_id        _device_id;
+    size_t              _optimal_local_workgroup_size;
 };
 
 
