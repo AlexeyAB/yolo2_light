@@ -78,7 +78,8 @@ void forward_route_layer_gpu_cuda(const layer l, network_state state)
 void forward_reorg_layer_gpu_cuda(layer l, network_state state)
 {
 	// blas_kernels.cu
-	reorg_ongpu(state.input, l.w, l.h, l.c, l.batch, l.stride, 1, l.output_gpu);
+	//reorg_ongpu(state.input, l.w, l.h, l.c, l.batch, l.stride, 1, l.output_gpu);
+	reorg_ongpu(state.input, l.out_w, l.out_h, l.out_c, l.batch, l.stride, 0, l.output_gpu);
 }
 
 

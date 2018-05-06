@@ -739,21 +739,25 @@ void forward_reorg_layer_q(const layer l, network_state state)
 	//printf("\n out_c = %d, out_w = %d, out_h = %d, stride = %d, forward = %d \n", out_c, out_w, out_h, stride, forward);
 	//printf("  in_c = %d,  in_w = %d,  in_h = %d \n", in_c, out_w*stride, out_h*stride);
 
+	// batch
 	for (b = 0; b < batch; ++b) {
+		// channel
 		for (k = 0; k < out_c; ++k) {
 			int c2 = k % in_c;
 			int pre_out_index = out_h_X_stride*(c2 + in_c*b);
 			int offset = k / in_c;
 			int offset_mod_stride = offset % stride;
 			int offset_div_stride = offset / stride;
+			// y
 			for (j = 0; j < out_h; ++j) {
 				int pre_in_index = out_w*(j + out_h*(k + out_c*b));
+				// x
 				for (i = 0; i < out_w; ++i) {
 					int in_index = i + pre_in_index;
 					int w2 = i*stride + offset_mod_stride;
 					int h2 = j*stride + offset_div_stride;
 					int out_index = w2 + out_w_X_stride*(h2 + pre_out_index);
-					out[out_index] = x[in_index];	// used by default for forward (i.e. forward = 0)
+					out[in_index] = x[out_index];
 				}
 			}
 		}

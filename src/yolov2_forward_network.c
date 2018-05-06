@@ -195,29 +195,33 @@ void forward_reorg_layer_cpu(const layer l, network_state state)
 {
 	float *out = l.output;
 	float *x = state.input;
-	int w = l.w;
-	int h = l.h;
-	int c = l.c;
-	int batch = l.batch;
-	
-	int stride = l.stride;
-	int b, i, j, k;
-	int out_c = c / (stride*stride);
 
-	// batch index
+	int out_w = l.out_w;
+	int out_h = l.out_h;
+	int out_c = l.out_c;
+	int batch = l.batch;
+	int stride = l.stride;
+
+	int b, i, j, k;
+	int in_c = out_c / (stride*stride);
+
+	//printf("\n out_c = %d, out_w = %d, out_h = %d, stride = %d, forward = %d \n", out_c, out_w, out_h, stride, forward);
+	//printf("  in_c = %d,  in_w = %d,  in_h = %d \n", in_c, out_w*stride, out_h*stride);
+
+	// batch
 	for (b = 0; b < batch; ++b) {
-		// channel index
-		for (k = 0; k < c; ++k) {
+		// channel
+		for (k = 0; k < out_c; ++k) {
 			// y
-			for (j = 0; j < h; ++j) {
+			for (j = 0; j < out_h; ++j) {
 				// x
-				for (i = 0; i < w; ++i) {
-					int in_index = i + w*(j + h*(k + c*b));
-					int c2 = k % out_c;
-					int offset = k / out_c;
+				for (i = 0; i < out_w; ++i) {
+					int in_index = i + out_w*(j + out_h*(k + out_c*b));
+					int c2 = k % in_c;
+					int offset = k / in_c;
 					int w2 = i*stride + offset % stride;
 					int h2 = j*stride + offset / stride;
-					int out_index = w2 + w*stride*(h2 + h*stride*(c2 + out_c*b));
+					int out_index = w2 + out_w*stride*(h2 + out_h*stride*(c2 + in_c*b));
 					out[in_index] = x[out_index];
 				}
 			}
