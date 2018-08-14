@@ -62,116 +62,6 @@ extern "C" {
         int channels, int height, int width,
         int ksize, int stride, int pad, float* data_col);
 
-    // -------------- blas.h --------------
-
-    // blas.c
-    void gemm_nn(int M, int N, int K, float ALPHA,
-        float *A, int lda, float *B, int ldb, float *C, int ldc);
-
-    // blas.c
-    void fill_cpu(int N, float ALPHA, float *X, int INCX);
-
-
-    // -------------- list.h --------------
-
-
-    typedef struct node {
-        void *val;
-        struct node *next;
-        struct node *prev;
-    } node;
-
-    typedef struct list {
-        int size;
-        node *front;
-        node *back;
-    } list;
-
-
-    // list.c
-    list *get_paths(char *filename);
-
-    // list.c
-    void **list_to_array(list *l);
-
-    // list.c
-    void free_node(node *n);
-
-    // list.c
-    void free_list(list *l);
-
-    // list.c
-    char **get_labels(char *filename);
-
-
-    // -------------- utils.h --------------
-
-#define TWO_PI 6.2831853071795864769252866
-
-    // utils.c
-    void error(const char *s);
-
-    // utils.c
-    void malloc_error();
-
-    // utils.c
-    void file_error(char *s);
-
-    // utils.c
-    char *fgetl(FILE *fp);
-
-    // utils.c
-    int *read_map(char *filename);
-
-    // utils.c
-    void del_arg(int argc, char **argv, int index);
-
-    // utils.c
-    int find_arg(int argc, char* argv[], char *arg);
-
-    // utils.c
-    int find_int_arg(int argc, char **argv, char *arg, int def);
-
-    // utils.c
-    float find_float_arg(int argc, char **argv, char *arg, float def);
-
-    // utils.c
-    char *find_char_arg(int argc, char **argv, char *arg, char *def);
-
-    // utils.c
-    void strip(char *s);
-
-    // utils.c
-    void list_insert(list *l, void *val);
-
-    // utils.c
-    float rand_uniform(float min, float max);
-
-    // utils.c
-    float rand_scale(float s);
-
-    // utils.c
-    int rand_int(int min, int max);
-
-    // utils.c
-    int constrain_int(int a, int min, int max);
-
-    // utils.c
-    float dist_array(float *a, float *b, int n, int sub);
-
-    // utils.c
-    float mag_array(float *a, int n);
-
-    // utils.c
-    int max_index(float *a, int n);
-
-    // utils.c
-    // From http://en.wikipedia.org/wiki/Box%E2%80%93Muller_transform
-    float rand_normal();
-
-    // utils.c
-    void free_ptrs(void **ptrs, int n);
-
 
     // --------------  activations.h --------------
 
@@ -273,6 +163,156 @@ extern "C" {
             x[i] = activate(x[i], a);
         }
     }
+
+
+    // -------------- XNOR-net ------------
+
+    // binarize Weights
+    void binarize_weights(float *weights, int n, int size, float *binary);
+
+    // binarize Input
+    void binarize_cpu(float *input, int n, float *binary);
+
+    struct layer;
+    typedef struct layer layer;
+    typedef layer convolutional_layer;
+    struct network;
+
+    // float32 to bit-1 and align weights for 1 layer
+    void binary_align_weights(convolutional_layer *l);
+
+    // float32 to bit-1 and align weights for ALL layers
+    void calculate_binary_weights(struct network net);
+
+    // -------------- blas.h --------------
+
+    // blas.c
+    void gemm_nn(int M, int N, int K, float ALPHA,
+        float *A, int lda, float *B, int ldb, float *C, int ldc);
+
+    // blas.c
+    void fill_cpu(int N, float ALPHA, float *X, int INCX);
+
+    // AVX2
+    void im2col_cpu_custom(float* data_im,
+        int channels, int height, int width,
+        int ksize, int stride, int pad, float* data_col);
+
+    // AVX2
+    void activate_array_cpu_custom(float *x, const int n, const ACTIVATION a);
+
+    // AVX2
+    void transpose_block_SSE4x4(float *A, float *B, const int n, const int m,
+        const int lda, const int ldb, const int block_size);
+
+    // AVX2
+    void float_to_bit(float *src, unsigned char *dst, size_t size);
+
+    // AVX2
+    void gemm_nn_custom_bin_mean_transposed(int M, int N, int K, float ALPHA_UNUSED,
+        unsigned char *A, int lda,
+        unsigned char *B, int ldb,
+        float *C, int ldc, float *mean_arr);
+
+    // -------------- list.h --------------
+
+
+    typedef struct node {
+        void *val;
+        struct node *next;
+        struct node *prev;
+    } node;
+
+    typedef struct list {
+        int size;
+        node *front;
+        node *back;
+    } list;
+
+
+    // list.c
+    list *get_paths(char *filename);
+
+    // list.c
+    void **list_to_array(list *l);
+
+    // list.c
+    void free_node(node *n);
+
+    // list.c
+    void free_list(list *l);
+
+    // list.c
+    char **get_labels(char *filename);
+
+
+    // -------------- utils.h --------------
+
+#define TWO_PI 6.2831853071795864769252866
+
+    // utils.c
+    void error(const char *s);
+
+    // utils.c
+    void malloc_error();
+
+    // utils.c
+    void file_error(char *s);
+
+    // utils.c
+    char *fgetl(FILE *fp);
+
+    // utils.c
+    int *read_map(char *filename);
+
+    // utils.c
+    void del_arg(int argc, char **argv, int index);
+
+    // utils.c
+    int find_arg(int argc, char* argv[], char *arg);
+
+    // utils.c
+    int find_int_arg(int argc, char **argv, char *arg, int def);
+
+    // utils.c
+    float find_float_arg(int argc, char **argv, char *arg, float def);
+
+    // utils.c
+    char *find_char_arg(int argc, char **argv, char *arg, char *def);
+
+    // utils.c
+    void strip(char *s);
+
+    // utils.c
+    void list_insert(list *l, void *val);
+
+    // utils.c
+    float rand_uniform(float min, float max);
+
+    // utils.c
+    float rand_scale(float s);
+
+    // utils.c
+    int rand_int(int min, int max);
+
+    // utils.c
+    int constrain_int(int a, int min, int max);
+
+    // utils.c
+    float dist_array(float *a, float *b, int n, int sub);
+
+    // utils.c
+    float mag_array(float *a, int n);
+
+    // utils.c
+    int max_index(float *a, int n);
+
+    // utils.c
+    // From http://en.wikipedia.org/wiki/Box%E2%80%93Muller_transform
+    float rand_normal();
+
+    // utils.c
+    void free_ptrs(void **ptrs, int n);
 
     // --------------  tree.h --------------
 
@@ -440,6 +480,10 @@ extern "C" {
         float *concat_delta;
 
         float *binary_weights;
+
+        char *align_bit_weights;
+        float *mean_arr;
+        int lda_align;
 
         float *biases;
         float *biases_quant;
@@ -872,7 +916,7 @@ extern "C" {
 
     // -------------- gettimeofday for Windows--------------------
 
-#if defined(_MSC_VER) 
+#if defined(_MSC_VER)
 #include <time.h>
 #include <windows.h> //I've ommited this line.
 #if defined(_MSC_VER) || defined(_MSC_EXTENSIONS)

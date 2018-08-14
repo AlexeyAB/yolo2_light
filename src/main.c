@@ -69,7 +69,7 @@ int compare_by_lefts(const void *a_ptr, const void *b_ptr) {
     return delta < 0 ? -1 : delta > 0 ? 1 : 0;
 }
 
-// compare to sort detection** by best_class probability 
+// compare to sort detection** by best_class probability
 int compare_by_probs(const void *a_ptr, const void *b_ptr) {
     const detection_with_class* a = (detection_with_class*)a_ptr;
     const detection_with_class* b = (detection_with_class*)b_ptr;
@@ -164,6 +164,7 @@ void test_detector_cpu(char **names, char *cfgfile, char *weightfile, char *file
     //set_batch_network(&net, 1);                    // network.c
     srand(2222222);
     yolov2_fuse_conv_batchnorm(net);
+    calculate_binary_weights(net);
     if (quantized) {
         printf("\n\n Quantinization! \n\n");
         quantinization_and_get_multipliers(net);
@@ -459,6 +460,7 @@ void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const ch
     }
     //set_batch_network(&net, 1);
     yolov2_fuse_conv_batchnorm(net);
+    calculate_binary_weights(net);
     if (quantized) {
         printf("\n\n Quantinization! \n\n");
         demo_quantized = 1;

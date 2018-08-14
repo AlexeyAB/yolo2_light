@@ -11,16 +11,47 @@ typedef struct {
 */
 
 
+// further optimizations: im2col_bin() for XNOR, and then transpose_aling_bin()
+size_t binary_transpose_align_input(int k, int n, float *b, char **t_bit_input, size_t ldb_align)
+{
+    size_t new_ldb = k + (ldb_align - k%ldb_align); // (k / 8 + 1) * 8;
+    size_t t_intput_size = new_ldb * n;
+    size_t t_bit_input_size = t_intput_size / 8;// +1;
+    float *t_input = calloc(t_intput_size, sizeof(float));
+    //char *
+    *t_bit_input = calloc(t_bit_input_size, sizeof(char));
+
+    int blocksize = 64;
+    transpose_block_SSE4x4(b, t_input, k, n, n, new_ldb, blocksize);
+
+    float_to_bit(t_input, *t_bit_input, t_intput_size);
+    free(t_input);
+
+    return t_intput_size;
+}
+
 // 4 layers in 1: convolution, batch-normalization, BIAS and activation
 void forward_convolutional_layer_cpu(layer l, network_state state)
 {
 
-    int out_h = (l.h + 2 * l.pad - l.size) / l.stride + 1;    // output_height=input_height for stride=1 and pad=1 
-    int out_w = (l.w + 2 * l.pad - l.size) / l.stride + 1;    // output_width=input_width for stride=1 and pad=1 
+    int out_h = (l.h + 2 * l.pad - l.size) / l.stride + 1;    // output_height=input_height for stride=1 and pad=1
+    int out_w = (l.w + 2 * l.pad - l.size) / l.stride + 1;    // output_width=input_width for stride=1 and pad=1
     int i, f, j;
 
     // fill zero (ALPHA)
     for (i = 0; i < l.outputs; ++i) l.output[i] = 0;
+
+    if (l.xnor) {
+        if (!l.align_bit_weights)
+        {
+            binarize_weights(l.weights, l.n, l.c*l.size*l.size, l.binary_weights);
+            //printf("\n binarize_weights l.align_bit_weights = %p \n", l.align_bit_weights);
+        }
+        binarize_cpu(state.input, l.c*l.h*l.w*l.batch, l.binary_input);
+
+        l.weights = l.binary_weights;
+        state.input = l.binary_input;
+    }
 
     // l.n - number of filters on this layer
     // l.c - channels of input-array
@@ -32,7 +63,7 @@ void forward_convolutional_layer_cpu(layer l, network_state state)
     // 1. Convolution !!!
 #ifndef GEMMCONV
     int fil;
-    // filter index 
+    // filter index
 #pragma omp parallel for      // "omp parallel for" - automatic parallelization of loop by using OpenMP
     for (fil = 0; fil < l.n; ++fil) {
         int chan, y, x, f_y, f_x;
@@ -64,8 +95,8 @@ void forward_convolutional_layer_cpu(layer l, network_state state)
                             sum += state.input[input_index] * l.weights[weights_index];
                         }
                     }
-                    // l.output[filters][width][height] += 
-                    //        state.input[channels][width][height] * 
+                    // l.output[filters][width][height] +=
+                    //        state.input[channels][width][height] *
                     //        l.weights[filters][channels][filter_width][filter_height];
                     l.output[output_index] += sum;
                 }
@@ -82,11 +113,28 @@ void forward_convolutional_layer_cpu(layer l, network_state state)
 
     // convolution as GEMM (as part of BLAS)
     for (i = 0; i < l.batch; ++i) {
-        im2col_cpu(state.input, l.c, l.h, l.w, l.size, l.stride, l.pad, b);    // im2col.c
-        int t;
-#pragma omp parallel for
-        for (t = 0; t < m; ++t) {
-            gemm_nn(1, n, k, 1, a + t*k, k, b, n, c + t*n, n);
+        //im2col_cpu(state.input, l.c, l.h, l.w, l.size, l.stride, l.pad, b);    // im2col.c
+        im2col_cpu_custom(state.input, l.c, l.h, l.w, l.size, l.stride, l.pad, b);    // AVX2
+
+        // XNOR-net - bit-1: weights, input, calculation
+        if (l.xnor) {
+            //size_t ldb_align = 256; // 256 bit for AVX2
+            int ldb_align = l.lda_align;
+            size_t new_ldb = k + (ldb_align - k%ldb_align);
+            char *t_bit_input = NULL;
+            size_t t_intput_size = binary_transpose_align_input(k, n, b, &t_bit_input, ldb_align);
+
+            // 5x times faster than gemm()-float32
+            // further optimizations: accelerate maxpool-layer with OpenMP/AVX
+            gemm_nn_custom_bin_mean_transposed(m, n, k, 1, l.align_bit_weights, new_ldb, t_bit_input, new_ldb, c, n, l.mean_arr);
+            free(t_bit_input);
+        }
+        else {
+            int t;
+            #pragma omp parallel for
+            for (t = 0; t < m; ++t) {
+                gemm_nn(1, n, k, 1, a + t*k, k, b, n, c + t*n, n);
+            }
         }
         c += n*m;
         state.input += l.c*l.h*l.w;
@@ -123,11 +171,12 @@ void forward_convolutional_layer_cpu(layer l, network_state state)
     }
 
     // 4. Activation function (LEAKY or LINEAR)
-    if (l.activation == LEAKY) {
-        for (i = 0; i < l.n*out_size; ++i) {
-            l.output[i] = leaky_activate(l.output[i]);
-        }
-    }
+    //if (l.activation == LEAKY) {
+    //    for (i = 0; i < l.n*out_size; ++i) {
+    //        l.output[i] = leaky_activate(l.output[i]);
+    //    }
+    //}
+    activate_array_cpu_custom(l.output, l.n*out_size, l.activation);
 
 }
 
@@ -371,7 +420,7 @@ static void softmax_tree(float *input, int batch, int inputs, float temp, tree *
 // ---
 
 
-// Region layer - just change places of array items, then do logistic_activate and softmax 
+// Region layer - just change places of array items, then do logistic_activate and softmax
 void forward_region_layer_cpu(const layer l, network_state state)
 {
     int i, b;

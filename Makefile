@@ -52,7 +52,7 @@ OPTS=-O0 -g
 endif
 
 ifeq ($(AVX), 1) 
-CFLAGS+= -ffp-contract=fast -msse4.1 -msse4a -mavx -mavx2 -mfma -DAVX
+CFLAGS+= -ffp-contract=fast -msse3 -msse4.1 -msse4.2 -msse4a -mavx -mavx2 -mfma -DAVX
 endif
 
 ifeq ($(SSE), 1) 
