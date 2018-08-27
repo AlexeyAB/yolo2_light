@@ -586,9 +586,9 @@ void run_detector(int argc, char **argv)
     char buffer[255];
     fp = fopen(obj_names, "r");
     while (fgets(buffer, 255, (FILE*)fp)) {
-        names[obj_count] = calloc(strlen(buffer), sizeof(char));
+        names[obj_count] = calloc(strlen(buffer)+1, sizeof(char));
         strcpy(names[obj_count], buffer);
-        names[obj_count][strlen(buffer) - 1] = 0;
+        names[obj_count][strlen(buffer) - 1] = '\0'; //remove newline
         ++obj_count;
     }
     fclose(fp);
