@@ -11,21 +11,17 @@ typedef struct {
 */
 
 
-// further optimizations: im2col_bin() for XNOR, and then transpose_aling_bin()
-size_t binary_transpose_align_input(int k, int n, float *b, char **t_bit_input, size_t ldb_align)
+// binary transpose
+size_t binary_transpose_align_input(int k, int n, float *b, char **t_bit_input, size_t ldb_align, int bit_align)
 {
     size_t new_ldb = k + (ldb_align - k%ldb_align); // (k / 8 + 1) * 8;
     size_t t_intput_size = new_ldb * n;
     size_t t_bit_input_size = t_intput_size / 8;// +1;
-    float *t_input = calloc(t_intput_size, sizeof(float));
-    //char *
     *t_bit_input = calloc(t_bit_input_size, sizeof(char));
 
-    int blocksize = 64;
-    transpose_block_SSE4x4(b, t_input, k, n, n, new_ldb, blocksize);
-
-    float_to_bit(t_input, *t_bit_input, t_intput_size);
-    free(t_input);
+    //printf("\n t_bit_input_size = %d, k = %d, n = %d, new_ldb = %d \n", t_bit_input_size, k, n, new_ldb);
+    int src_size = k * bit_align;
+    transpose_bin(b, *t_bit_input, k, n, bit_align, new_ldb, 8);
 
     return t_intput_size;
 }
@@ -114,22 +110,29 @@ void forward_convolutional_layer_cpu(layer l, network_state state)
     // convolution as GEMM (as part of BLAS)
     for (i = 0; i < l.batch; ++i) {
         //im2col_cpu(state.input, l.c, l.h, l.w, l.size, l.stride, l.pad, b);    // im2col.c
-        im2col_cpu_custom(state.input, l.c, l.h, l.w, l.size, l.stride, l.pad, b);    // AVX2
+        //im2col_cpu_custom(state.input, l.c, l.h, l.w, l.size, l.stride, l.pad, b);    // AVX2
 
         // XNOR-net - bit-1: weights, input, calculation
-        if (l.xnor) {
-            //size_t ldb_align = 256; // 256 bit for AVX2
+        if (l.xnor && (l.stride == 1 && l.pad == 1)) {
+            memset(b, 0, l.bit_align*l.size*l.size*l.c * sizeof(float));
+            //im2col_cpu_custom_align(state.input, l.c, l.h, l.w, l.size, l.stride, l.pad, b, l.bit_align);
+            im2col_cpu_custom_bin(state.input, l.c, l.h, l.w, l.size, l.stride, l.pad, b, l.bit_align);
+
             int ldb_align = l.lda_align;
             size_t new_ldb = k + (ldb_align - k%ldb_align);
             char *t_bit_input = NULL;
-            size_t t_intput_size = binary_transpose_align_input(k, n, b, &t_bit_input, ldb_align);
+            size_t t_intput_size = binary_transpose_align_input(k, n, b, &t_bit_input, ldb_align, l.bit_align);
 
             // 5x times faster than gemm()-float32
-            // further optimizations: accelerate maxpool-layer with OpenMP/AVX
             gemm_nn_custom_bin_mean_transposed(m, n, k, 1, l.align_bit_weights, new_ldb, t_bit_input, new_ldb, c, n, l.mean_arr);
+
+            //gemm_nn_custom_bin_mean_transposed(m, n, k, 1, bit_weights, k, t_bit_input, new_ldb, c, n, mean_arr);
+
+            //free(t_input);
             free(t_bit_input);
         }
         else {
+            im2col_cpu_custom(state.input, l.c, l.h, l.w, l.size, l.stride, l.pad, b);    // AVX2
             int t;
             #pragma omp parallel for
             for (t = 0; t < m; ++t) {
@@ -185,6 +188,11 @@ void forward_convolutional_layer_cpu(layer l, network_state state)
 // MAX pooling layer
 void forward_maxpool_layer_cpu(const layer l, network_state state)
 {
+    if (!state.train) {
+        forward_maxpool_layer_avx(state.input, l.output, l.indexes, l.size, l.w, l.h, l.out_w, l.out_h, l.c, l.pad, l.stride, l.batch);
+        return;
+    }
+
     int b, i, j, k, m, n;
     int w_offset = -l.pad;
     int h_offset = -l.pad;

@@ -446,7 +446,7 @@ static double get_wall_time()
 
 // Detect on Video: this function uses other functions not from this file
 void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const char *filename, char **names, int classes,
-    int frame_skip, char *prefix, int quantized)
+    int frame_skip, char *prefix, int quantized, char *out_filename)
 {
     int delay = frame_skip;
     demo_names = names;
@@ -508,6 +508,16 @@ void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const ch
         cvResizeWindow("Demo", 1352, 1013);
     }
 
+    CvVideoWriter* output_video_writer = NULL;    // cv::VideoWriter output_video;
+    if (out_filename)
+    {
+        CvSize size;
+        size.width = det_img->width, size.height = det_img->height;
+        int src_fps = 25;
+        src_fps = cvGetCaptureProperty(cap, CV_CAP_PROP_FPS);
+        output_video_writer = cvCreateVideoWriter(out_filename, CV_FOURCC('D', 'I', 'V', 'X'), src_fps, size, 1);
+    }
+
     double before = get_wall_time();
 
     while (1) {
@@ -525,6 +535,14 @@ void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const ch
             sprintf(buff, "%s_%08d", prefix, count);
             save_image_png(disp, buff);
         }
+
+        // save video file
+        if (output_video_writer && show_img) {
+            cvWriteFrame(output_video_writer, show_img);
+            //printf("\n cvWriteFrame \n");
+        }
+
+        cvReleaseImage(&show_img);
 
         pthread_join(fetch_thread, 0);
         pthread_join(detect_thread, 0);
@@ -563,6 +581,7 @@ void run_detector(int argc, char **argv)
 {
     char *prefix = find_char_arg(argc, argv, "-prefix", 0);
     float thresh = find_float_arg(argc, argv, "-thresh", .24);
+    char *out_filename = find_char_arg(argc, argv, "-out_filename", 0);
     int cam_index = find_int_arg(argc, argv, "-c", 0);
     int quantized = find_arg(argc, argv, "-quantized");
     int input_calibration = find_int_arg(argc, argv, "-input_calibration", 0);
@@ -601,7 +620,7 @@ void run_detector(int argc, char **argv)
     else if (0 == strcmp(argv[2], "map")) validate_detector_map(obj_names, cfg, weights, thresh, quantized);
     else if (0 == strcmp(argv[2], "calibrate")) validate_calibrate_valid(obj_names, cfg, weights, input_calibration);
     else if (0 == strcmp(argv[2], "demo")) {
-        demo(cfg, weights, thresh, cam_index, filename, names, classes, frame_skip, prefix, quantized);
+        demo(cfg, weights, thresh, cam_index, filename, names, classes, frame_skip, prefix, quantized, out_filename);
     }
 
     int i;

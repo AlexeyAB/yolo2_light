@@ -193,17 +193,25 @@ extern "C" {
     // blas.c
     void fill_cpu(int N, float ALPHA, float *X, int INCX);
 
+    void transpose_bin(char *A, char *B, const int n, const int m,
+        const int lda, const int ldb, const int block_size);
+
     // AVX2
     void im2col_cpu_custom(float* data_im,
         int channels, int height, int width,
         int ksize, int stride, int pad, float* data_col);
 
     // AVX2
+    void im2col_cpu_custom_bin(float* data_im,
+        int channels, int height, int width,
+        int ksize, int stride, int pad, float* data_col, int bit_align);
+
+    // AVX2
     void activate_array_cpu_custom(float *x, const int n, const ACTIVATION a);
 
     // AVX2
-    void transpose_block_SSE4x4(float *A, float *B, const int n, const int m,
-        const int lda, const int ldb, const int block_size);
+    void forward_maxpool_layer_avx(float *src, float *dst, int *indexes, int size, int w, int h, int out_w, int out_h, int c,
+        int pad, int stride, int batch);
 
     // AVX2
     void float_to_bit(float *src, unsigned char *dst, size_t size);
@@ -484,6 +492,7 @@ extern "C" {
         char *align_bit_weights;
         float *mean_arr;
         int lda_align;
+        int bit_align;
 
         float *biases;
         float *biases_quant;
