@@ -1,3 +1,3 @@
-./darknet detector demo voc.names yolo-voc.cfg yolo-voc.weights -thresh 0.24 test.mp4
+./darknet detector demo coco.names yolov3.cfg yolov3.weights -thresh 0.24 test.mp4
 
 

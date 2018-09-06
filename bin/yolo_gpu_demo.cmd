@@ -1,6 +1,6 @@
 
 
-yolo_gpu.exe detector demo voc.names yolo-voc.cfg yolo-voc.weights -thresh 0.24 test.mp4
+yolo_gpu.exe detector demo coco.names yolov3.cfg yolov3.weights -thresh 0.24 test.mp4
 
 
 pause

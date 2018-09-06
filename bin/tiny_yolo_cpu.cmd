@@ -1,16 +1,12 @@
 
-rem yolo_cpu.exe detector test voc.names yolo-voc.cfg yolo-voc.weights -thresh 0.03 dog.jpg -quantized
+yolo_cpu.exe detector test coco.names yolov3-tiny.cfg yolov3-tiny.weights -thresh 0.2 dog.jpg
 
 
-yolo_cpu.exe detector demo voc.names tiny-yolo-voc.cfg tiny-yolo-voc.weights -thresh 0.2 -quantized test.mp4
+yolo_cpu.exe detector demo coco.names yolov3-tiny.cfg yolov3-tiny.weights -thresh 0.2 test.mp4
 
 
-rem yolo_cpu.exe detector test voc.names tiny-yolo-voc.cfg tiny-yolo-voc.weights -thresh 0.2 -quantized
+rem yolo_cpu.exe detector demo coco.names yolov3-tiny.cfg yolov3-tiny.weights -thresh 0.2 test.mp4 -quantized
 
 
-yolo_cpu.exe detector test voc.names tiny-yolo-voc.cfg tiny-yolo-voc.weights -thresh 0.2 dog.jpg -quantized
-
-
-yolo_cpu.exe detector test coco.names tiny-yolo.cfg tiny-yolo.weights -thresh 0.2 dog.jpg -quantized
 
 pause

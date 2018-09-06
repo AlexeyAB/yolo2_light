@@ -1,8 +1,8 @@
 
-rem yolo_cpu.exe detector test voc.names tiny-yolo-voc.cfg tiny-yolo-voc.weights -thresh 0.24 dog.jpg
+rem yolo_cpu.exe detector test coco.names yolov3-tiny.cfg yolov3-tiny.weights -thresh 0.24 dog.jpg
 
 
-yolo_cpu.exe detector test voc.names yolo-voc.cfg yolo-voc.weights -thresh 0.24 dog.jpg
+yolo_cpu.exe detector test coco.names yolov3.cfg yolov3.weights -thresh 0.24 dog.jpg
 
 
 pause
