@@ -184,6 +184,47 @@ extern "C" {
     // float32 to bit-1 and align weights for ALL layers
     void calculate_binary_weights(struct network net);
 
+    // -------------- XNOR-net GPU ------------
+
+#ifdef GPU
+    void swap_binary(convolutional_layer *l);
+
+    void binarize_weights_gpu(float *weights, int n, int size, float *binary);
+
+    void binarize_gpu(float *x, int n, float *binary);
+
+    void im2col_align_ongpu(float *im,
+        int channels, int height, int width,
+        int ksize, int stride, int pad, float *data_col, int bit_align);
+
+    void im2col_align_bin_ongpu(float *im,
+        int channels, int height, int width,
+        int ksize, int stride, int pad, float *data_col, int bit_align);
+
+    void float_to_bit_gpu(float *src, unsigned char *dst, size_t size);
+
+    void transpose_bin_gpu(unsigned char *A, unsigned char *B, const int n, const int m,
+        const int lda, const int ldb, const int block_size);
+
+    void fill_int8_gpu(unsigned char *src, unsigned char val, size_t size);
+
+    //void gemm_nn_custom_bin_mean_transposed_gpu(int M, int N, int K,
+    //    unsigned char *A, int lda,
+    //    unsigned char *B, int ldb,
+    //    float *C, int ldc, float *mean_arr);
+
+    void gemm_nn_custom_bin_mean_transposed_gpu(int M, int N, int K,
+        unsigned char *A, int lda,
+        unsigned char *B, int ldb,
+        float *C, int ldc, float *mean_arr, float *bias);
+
+    void gemm_nn_custom_bin_mean_transposed_sequentially_gpu(int M, int N, int K,
+        unsigned char *A, int lda,
+        unsigned char *B, int ldb,
+        float *C, int ldc, float *mean_arr);
+
+#endif // GPU
+
     // -------------- blas.h --------------
 
     // blas.c
@@ -412,6 +453,7 @@ extern "C" {
         int index;
         int binary;
         int xnor;
+        int use_bin_output;
         int steps;
         int hidden;
         float dot;
@@ -489,9 +531,17 @@ extern "C" {
 
         float *binary_weights;
 
+        char *align_bit_weights_gpu;
+        float *mean_arr_gpu;
+        float *align_workspace_gpu;
+        float *transposed_align_workspace_gpu;
+        int align_workspace_size;
+
         char *align_bit_weights;
         float *mean_arr;
+        int align_bit_weights_size;
         int lda_align;
+        int new_lda;
         int bit_align;
 
         float *biases;
@@ -781,7 +831,7 @@ extern "C" {
     // -------------- convolutional_layer.h --------------
 
     // convolutional_layer.c
-    convolutional_layer make_convolutional_layer(int batch, int h, int w, int c, int n, int size, int stride, int padding, ACTIVATION activation, int batch_normalize, int binary, int xnor, int adam, int quantized);
+    convolutional_layer make_convolutional_layer(int batch, int h, int w, int c, int n, int size, int stride, int padding, ACTIVATION activation, int batch_normalize, int binary, int xnor, int adam, int quantized, int use_bin_output);
 
 
 

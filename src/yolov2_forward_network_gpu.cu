@@ -22,6 +22,73 @@ typedef struct {
 // 4 layers in 1: convolution, batch-normalization, BIAS and activation
 void forward_convolutional_layer_gpu_cudnn(layer l, network_state state)
 {
+    // XNOR-net
+    if (l.xnor) {
+
+        if (l.align_bit_weights_gpu && l.c >= 256 && l.size > 1)
+        {
+            cudaError_t status = cudaSuccess;
+            int input_size = l.c*l.h*l.w*l.batch;
+
+            int m = l.n;
+            int k = l.size*l.size*l.c;
+            int n = l.out_w*l.out_h;
+            //float * a = l.binary_weights_gpu;
+
+            int ldb_align = l.lda_align;
+            size_t new_ldb = k + (ldb_align - k%ldb_align); // (k / 8 + 1) * 8;
+            size_t t_intput_size = new_ldb * n;
+            size_t t_bit_input_size = t_intput_size / 8;// +1;
+
+            {
+                int i = 0;
+                if (l.stride == 1 && l.c >= 256 && l.w >= 13 && l.size > 1 && 0)    // disable
+                {
+                    // stride=1 only
+                    im2col_align_bin_ongpu(state.input + i*l.c*l.h*l.w, l.c, l.h, l.w, l.size, l.stride, l.pad, state.workspace, l.bit_align);
+                    //cudaDeviceSynchronize();
+                }
+                else
+                {
+                    im2col_align_ongpu(state.input + i*l.c*l.h*l.w, l.c, l.h, l.w, l.size, l.stride, l.pad, l.align_workspace_gpu, l.bit_align);
+                    //cudaDeviceSynchronize();
+
+                    // should be optimized
+                    float_to_bit_gpu(l.align_workspace_gpu, (unsigned char *)state.workspace, l.align_workspace_size);
+                    //cudaDeviceSynchronize();
+                }
+
+                transpose_bin_gpu((unsigned char *)state.workspace, (unsigned char *)l.transposed_align_workspace_gpu, k, n, l.bit_align, new_ldb, 8);
+                //cudaDeviceSynchronize();
+
+                // should be optimized
+                gemm_nn_custom_bin_mean_transposed_gpu(m, n, k,
+                    (unsigned char *)l.align_bit_weights_gpu, new_ldb, (unsigned char *)l.transposed_align_workspace_gpu, new_ldb, l.output_gpu, n, l.mean_arr_gpu, l.biases_gpu);
+
+                //gemm_nn_custom_bin_mean_transposed_sequentially_gpu(m, n, k,
+                //    (unsigned char *)l.align_bit_weights_gpu, new_ldb, (unsigned char *)l.transposed_align_workspace_gpu, new_ldb, l.output_gpu, n, l.mean_arr_gpu);
+
+                //cudaDeviceSynchronize();
+                //check_error(status);
+            }
+
+            //add_bias_gpu(l.output_gpu, l.biases_gpu, l.batch, l.n, l.out_w*l.out_h);
+            if (l.activation != LINEAR) activate_array_ongpu(l.output_gpu, l.outputs*l.batch, l.activation);
+            //cudaDeviceSynchronize();
+            return;
+        }
+
+        if (!l.align_bit_weights_gpu) {
+            binarize_weights_gpu(l.weights_gpu, l.n, l.c*l.size*l.size, l.binary_weights_gpu);
+        }
+        l.weights_gpu = l.binary_weights_gpu;
+
+        binarize_gpu(state.input, l.c*l.h*l.w*l.batch, l.binary_input_gpu);
+        state.input = l.binary_input_gpu;
+
+    }
+
+
     // blas_kernels.cu
     fill_ongpu(l.outputs*l.batch, 0, l.output_gpu, 1);
 
@@ -55,7 +122,7 @@ void forward_convolutional_layer_gpu_cudnn(layer l, network_state state)
     add_bias_gpu(l.output_gpu, l.biases_gpu, l.batch, l.n, l.out_w*l.out_h);
 
     // blas_kernels.cu
-    activate_array_ongpu(l.output_gpu, l.outputs*l.batch, l.activation);
+    if (l.activation != LINEAR) activate_array_ongpu(l.output_gpu, l.outputs*l.batch, l.activation);
 }
 
 
@@ -105,7 +172,7 @@ void forward_convolutional_layer_gpu_cudnn_quantized(layer l, network_state stat
                                                                                                                //cuda_convert_f32_to_int8_nomax(state.input, size, state.input_int8, l.input_quant_multipler); // 7-bit (1-bit sign)
 
         //printf("\n l.input_quant_multipler = %f \n", l.input_quant_multipler);
-        
+
         cudnnStatus_t transform_status =
             cudnnTransformTensor(
                 cudnn_handle(),
@@ -393,7 +460,7 @@ void forward_network_gpu_cudnn(network net, network_state state)
         else if (l.type == YOLO) {
             forward_yolo_layer_cuda(l, state);
             //printf("\n YOLO \n");
-        }        
+        }
         else if (l.type == REGION) {
             forward_region_layer_gpu_cuda(l, state);
             //printf("\n REGION \n");

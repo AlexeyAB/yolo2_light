@@ -194,13 +194,14 @@ void binary_align_weights(convolutional_layer *l)
     int m = l->n;
     int k = l->size*l->size*l->c;
     size_t new_lda = k + (l->lda_align - k % l->lda_align); // (k / 8 + 1) * 8;
+    l->new_lda = new_lda;
 
     binarize_weights(l->weights, m, k, l->binary_weights);
 
     size_t align_weights_size = new_lda * m;
-    size_t align_bit_weights_size = align_weights_size / 8;// +1;
+    l->align_bit_weights_size = align_weights_size / 8;// +1;
     float *align_weights = calloc(align_weights_size, sizeof(float));
-    l->align_bit_weights = calloc(align_bit_weights_size, sizeof(char));
+    l->align_bit_weights = calloc(l->align_bit_weights_size, sizeof(char));
 
     size_t i, j;
     // align A without transpose
@@ -213,6 +214,25 @@ void binary_align_weights(convolutional_layer *l)
 
     l->mean_arr = calloc(l->n, sizeof(float));
     get_mean_array(align_weights, align_weights_size, l->n, l->mean_arr);
+
+#ifdef GPU
+    cudaError_t status;
+    l->align_workspace_size = l->bit_align * l->size * l->size * l->c;
+    status = cudaMalloc((void **)&l->align_workspace_gpu, l->align_workspace_size * sizeof(float));
+    status = cudaMalloc((void **)&l->transposed_align_workspace_gpu, l->align_workspace_size * sizeof(float));
+    check_error(status);
+
+    //l->align_bit_weights_gpu = cuda_make_array(l->align_bit_weights, l->align_bit_weights_size * sizeof(char)/sizeof(float));
+    status = cudaMalloc((void **)&l->align_bit_weights_gpu, l->align_bit_weights_size);
+    check_error(status);
+    status = cudaMemcpy(l->align_bit_weights_gpu, l->align_bit_weights, l->align_bit_weights_size, cudaMemcpyHostToDevice);
+    check_error(status);
+    status = cudaMemcpy(l->binary_weights_gpu, l->binary_weights, m*k * sizeof(float), cudaMemcpyHostToDevice);
+    check_error(status);
+
+    l->mean_arr_gpu = cuda_make_array(l->mean_arr, l->n);
+    cudaDeviceSynchronize();
+#endif // GPU
 
     free(align_weights);
 }
@@ -231,6 +251,10 @@ void calculate_binary_weights(network net)
                 l->lda_align = 256; // 256bit for AVX2
 
                 binary_align_weights(l);
+
+                if (net.layers[j].use_bin_output) {
+                    l->activation = LINEAR;
+                }
             }
         }
     }
@@ -397,16 +421,17 @@ void im2col_cpu_custom(float* data_im,
     int ksize, int stride, int pad, float* data_col)
 {
 
-    int c, h, w;
-    int height_col = (height + 2 * pad - ksize) / stride + 1;
-    int width_col = (width + 2 * pad - ksize) / stride + 1;
-    int channels_col = channels * ksize * ksize;
+    int c;
+    const int height_col = (height + 2 * pad - ksize) / stride + 1;
+    const int width_col = (width + 2 * pad - ksize) / stride + 1;
+    const int channels_col = channels * ksize * ksize;
 
     // optimized version
     if (height_col == height && width_col == width && stride == 1 && pad == 1)// && is_fma_avx())
     {
         #pragma omp parallel for
         for (c = 0; c < channels_col; ++c) {
+            int h, w;
             int w_offset = c % ksize;
             int h_offset = (c / ksize) % ksize;
             int c_im = c / ksize / ksize;
@@ -488,10 +513,10 @@ void im2col_cpu_custom_bin(float* data_im,
     int channels, int height, int width,
     int ksize, int stride, int pad, float* data_col, int bit_align)
 {
-    int c, h, w;
-    int height_col = (height + 2 * pad - ksize) / stride + 1;
-    int width_col = (width + 2 * pad - ksize) / stride + 1;
-    int channels_col = channels * ksize * ksize;
+    int c;
+    const int height_col = (height + 2 * pad - ksize) / stride + 1;
+    const int width_col = (width + 2 * pad - ksize) / stride + 1;
+    const int channels_col = channels * ksize * ksize;
 
     // optimized version
     if (height_col == height && width_col == width && stride == 1 && pad == 1)
@@ -503,6 +528,7 @@ void im2col_cpu_custom_bin(float* data_im,
 
         #pragma omp parallel for
         for (c = 0; c < channels_col; ++c) {
+            int h, w;
             int w_offset = c % ksize;
             int h_offset = (c / ksize) % ksize;
             int c_im = c / ksize / ksize;
@@ -645,8 +671,8 @@ void forward_maxpool_layer_avx(float *src, float *dst, int *indexes, int size, i
     int pad, int stride, int batch)
 {
 
-    int w_offset = -pad / 2;
-    int h_offset = -pad / 2;
+    const int w_offset = -pad / 2;
+    const int h_offset = -pad / 2;
     int b, k;
 
     for (b = 0; b < batch; ++b) {
@@ -790,7 +816,6 @@ void gemm_nn_custom_bin_mean_transposed(int M, int N, int K, float ALPHA_UNUSED,
     unsigned char *B, int ldb,
     float *C, int ldc, float *mean_arr)
 {
-    int i;
 
 #if defined(_OPENMP)
     static int max_num_threads = 0;
@@ -800,7 +825,8 @@ void gemm_nn_custom_bin_mean_transposed(int M, int N, int K, float ALPHA_UNUSED,
     }
 #endif
 
-#pragma omp parallel for
+    int i;
+    #pragma omp parallel for
     for (i = 0; i < M; ++i)
     {   // l.n - filters [16 - 55 - 1024]
         float mean_val = mean_arr[i];
@@ -905,18 +931,19 @@ void im2col_cpu_custom_bin(float* data_im,
     int channels, int height, int width,
     int ksize, int stride, int pad, float* data_col, int bit_align)
 {
-    int c, h, w;
-    int height_col = (height + 2 * pad - ksize) / stride + 1;
-    int width_col = (width + 2 * pad - ksize) / stride + 1;
-    int channels_col = channels * ksize * ksize;
+    int c;
+    const int height_col = (height + 2 * pad - ksize) / stride + 1;
+    const int width_col = (width + 2 * pad - ksize) / stride + 1;
+    const int channels_col = channels * ksize * ksize;
 
     // optimized version
     if (height_col == height && width_col == width && stride == 1 && pad == 1)
     {
         int new_ldb = bit_align;
 
-    #pragma omp parallel for
+        #pragma omp parallel for
         for (c = 0; c < channels_col; ++c) {
+            int h, w;
             int w_offset = c % ksize;
             int h_offset = (c / ksize) % ksize;
             int c_im = c / ksize / ksize;
@@ -1026,8 +1053,8 @@ void forward_maxpool_layer_avx(float *src, float *dst, int *indexes, int size, i
     int pad, int stride, int batch)
 {
     int b, k;
-    int w_offset = -pad / 2;
-    int h_offset = -pad / 2;
+    const int w_offset = -pad / 2;
+    const int h_offset = -pad / 2;
 
     for (b = 0; b < batch; ++b) {
         #pragma omp parallel for
@@ -2175,7 +2202,7 @@ int convolutional_out_width(convolutional_layer l)
 
 
 // convolutional_layer.c
-convolutional_layer make_convolutional_layer(int batch, int h, int w, int c, int n, int size, int stride, int padding, ACTIVATION activation, int batch_normalize, int binary, int xnor, int adam, int quantized)
+convolutional_layer make_convolutional_layer(int batch, int h, int w, int c, int n, int size, int stride, int padding, ACTIVATION activation, int batch_normalize, int binary, int xnor, int adam, int quantized, int use_bin_output)
 {
     int i;
     convolutional_layer l = { 0 };
@@ -2188,6 +2215,7 @@ convolutional_layer make_convolutional_layer(int batch, int h, int w, int c, int
     l.n = n;
     l.binary = binary;
     l.xnor = xnor;
+    l.use_bin_output = use_bin_output;
     l.batch = batch;
     l.stride = stride;
     l.size = size;
@@ -2230,7 +2258,7 @@ convolutional_layer make_convolutional_layer(int batch, int h, int w, int c, int
         l.binary_weights = calloc(c*n*size*size, sizeof(float));
         l.binary_input = calloc(l.inputs*l.batch, sizeof(float));
 
-        int align = 8;
+        int align = 32;// 8;
         int src_align = l.out_h*l.out_w;
         l.bit_align = src_align + (align - src_align % align);
     }
@@ -2286,10 +2314,10 @@ convolutional_layer make_convolutional_layer(int batch, int h, int w, int c, int
         //if (binary) {
         //    l.binary_weights_gpu = cuda_make_array(l.weights, c*n*size*size);
         //}
-        //if (xnor) {
-        //    l.binary_weights_gpu = cuda_make_array(l.weights, c*n*size*size);
-        //    l.binary_input_gpu = cuda_make_array(0, l.inputs*l.batch);
-        //}
+        if (xnor) {
+            l.binary_weights_gpu = cuda_make_array(l.weights, c*n*size*size);
+            l.binary_input_gpu = cuda_make_array(0, l.inputs*l.batch);
+        }
 
         if (batch_normalize) {
             //l.mean_gpu = cuda_make_array(l.mean, n);
@@ -2342,7 +2370,11 @@ convolutional_layer make_convolutional_layer(int batch, int h, int w, int c, int
     l.workspace_size = get_workspace_size(l);
     l.activation = activation;
 
-    fprintf(stderr, "conv  %5d %2d x%2d /%2d  %4d x%4d x%4d   ->  %4d x%4d x%4d\n", n, size, size, stride, w, h, c, l.out_w, l.out_h, l.out_c);
+    l.bflops = (2.0 * l.n * l.size*l.size*l.c * l.out_h*l.out_w) / 1000000000.;
+    if (l.xnor && l.use_bin_output) fprintf(stderr, "convXB");
+    else if (l.xnor) fprintf(stderr, "convX ");
+    else fprintf(stderr, "conv  ");
+    fprintf(stderr, "%5d %2d x%2d /%2d  %4d x%4d x%4d   ->  %4d x%4d x%4d %5.3f BF\n", n, size, size, stride, w, h, c, l.out_w, l.out_h, l.out_c, l.bflops);
 
     return l;
 }
@@ -2990,11 +3022,12 @@ convolutional_layer parse_convolutional(list *options, size_params params)
     int batch_normalize = option_find_int_quiet(options, "batch_normalize", 0);
     int binary = option_find_int_quiet(options, "binary", 0);
     int xnor = option_find_int_quiet(options, "xnor", 0);
+    int use_bin_output = option_find_int_quiet(options, "bin_output", 0);
 
     int quantized = params.quantized;
     if (params.index == 0 || activation == LINEAR || (params.index > 1 && stride>1) || size==1)
         quantized = 0; // disable Quantized for 1st and last layers
-    convolutional_layer layer = make_convolutional_layer(batch, h, w, c, n, size, stride, padding, activation, batch_normalize, binary, xnor, params.net.adam, quantized);
+    convolutional_layer layer = make_convolutional_layer(batch, h, w, c, n, size, stride, padding, activation, batch_normalize, binary, xnor, params.net.adam, quantized, use_bin_output);
     layer.flipped = option_find_int_quiet(options, "flipped", 0);
     layer.dot = option_find_float_quiet(options, "dot", 0);
     if (params.net.adam) {
