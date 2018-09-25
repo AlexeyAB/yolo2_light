@@ -641,7 +641,7 @@ int main(int argc, char **argv)
         fprintf(stderr, "usage: %s <function>\n", argv[0]);
         return 0;
     }
-    gpu_index = 0;
+    gpu_index = find_int_arg(argc, argv, "-i", 0);  //  gpu_index = 0;
 
 #ifndef GPU
     gpu_index = -1;

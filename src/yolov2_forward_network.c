@@ -373,7 +373,7 @@ void forward_shortcut_layer_cpu(const layer l, network_state state)
 
 void forward_yolo_layer_cpu(const layer l, network_state state)
 {
-    int i, j, b, t, n;
+    int b, n;
     memcpy(l.output, state.input, l.outputs*l.batch * sizeof(float));
 
 #ifndef GPU
@@ -584,10 +584,12 @@ box get_region_box_cpu(float *x, float *biases, int n, int index, int i, int j, 
 // get prediction boxes
 void get_region_boxes_cpu(layer l, int w, int h, float thresh, float **probs, box *boxes, int only_objectness, int *map)
 {
-    int i, j, n;
-    float *predictions = l.output;
+    int i;
+    float *const predictions = l.output;
     // grid index
+    #pragma omp parallel for
     for (i = 0; i < l.w*l.h; ++i) {
+        int j, n;
         int row = i / l.w;
         int col = i % l.w;
         // anchor index

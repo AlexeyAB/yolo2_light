@@ -9,6 +9,10 @@
 #pragma comment(lib, "cudnn.lib")
 #endif
 
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -521,7 +525,7 @@ void im2col_cpu_custom_bin(float* data_im,
     // optimized version
     if (height_col == height && width_col == width && stride == 1 && pad == 1)
     {
-        __m256i all256_sing1 = _mm256_set_epi32(0x80000000, 0x80000000, 0x80000000, 0x80000000, 0x80000000, 0x80000000, 0x80000000, 0x80000000);
+        //__m256i all256_sing1 = _mm256_set_epi32(0x80000000, 0x80000000, 0x80000000, 0x80000000, 0x80000000, 0x80000000, 0x80000000, 0x80000000);
         __m256 float_zero256 = _mm256_set1_ps(0.00);
 
         int new_ldb = bit_align;
@@ -878,7 +882,7 @@ void float_to_bit(float *src, unsigned char *dst, size_t size)
     memset(dst, 0, dst_size);
 
     size_t i;
-    __m256i all256_sing1 = _mm256_set_epi32(0x80000000, 0x80000000, 0x80000000, 0x80000000, 0x80000000, 0x80000000, 0x80000000, 0x80000000);
+    //__m256i all256_sing1 = _mm256_set_epi32(0x80000000, 0x80000000, 0x80000000, 0x80000000, 0x80000000, 0x80000000, 0x80000000, 0x80000000);
     __m256 float_zero256 = _mm256_set1_ps(0.0);
 
     for (i = 0; i < size; i += 8)
@@ -1637,6 +1641,38 @@ network make_network(int n)
     net.truth_gpu = calloc(1, sizeof(float *));
 #endif
     return net;
+}
+
+void free_network(network net)
+{
+    int i;
+    for (i = 0; i < net.n; ++i) {
+        free_layer(net.layers[i]);
+    }
+    free(net.layers);
+
+    free(net.scales);
+    free(net.steps);
+    free(net.seen);
+
+#ifdef GPU
+    if (gpu_index >= 0) cuda_free(net.workspace);
+    else free(net.workspace);
+    if (net.input_state_gpu) cuda_free(net.input_state_gpu);
+    if (*net.input_gpu) cuda_free(*net.input_gpu);
+    if (*net.truth_gpu) cuda_free(*net.truth_gpu);
+    if (net.input_gpu) free(net.input_gpu);
+    if (net.truth_gpu) free(net.truth_gpu);
+
+    //if (*net.input16_gpu) cuda_free(*net.input16_gpu);
+    //if (*net.output16_gpu) cuda_free(*net.output16_gpu);
+    //if (net.input16_gpu) free(net.input16_gpu);
+    //if (net.output16_gpu) free(net.output16_gpu);
+    //if (net.max_input16_size) free(net.max_input16_size);
+    //if (net.max_output16_size) free(net.max_output16_size);
+#else
+    free(net.workspace);
+#endif
 }
 
 
@@ -3526,6 +3562,8 @@ network parse_network_cfg(char *filename, int batch, int quantized)
 #ifdef GPU
         if (gpu_index >= 0) {
             net.workspace = cuda_make_array(0, (workspace_size - 1) / sizeof(float) + 1);
+            int size = net.layers[0].inputs * net.batch;    //get_network_input_size(net) * net.batch;
+            net.input_state_gpu = cuda_make_array(0, size);
         }
         else {
             net.workspace = calloc(1, workspace_size);
@@ -4000,7 +4038,6 @@ void do_nms_sort_v3(detection *dets, int total, int classes, float thresh)
 
 void validate_detector_map(char *datacfg, char *cfgfile, char *weightfile, float thresh_calc_avg_iou, int quantized)
 {
-    int j;
     list *options = read_data_cfg(datacfg);
     char *valid_images = option_find_str(options, "valid", "data/train.txt");
     char *difficult_valid_images = option_find_str(options, "difficult", NULL);

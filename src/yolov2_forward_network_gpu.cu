@@ -534,14 +534,15 @@ float *network_predict_gpu_cudnn(network net, float *input)
     network_state state;
     state.index = 0;
     state.net = net;
-    status = cudaMalloc((void **)&(state.input), sizeof(float)*size);
+    //status = cudaMalloc((void **)&(state.input), sizeof(float)*size);
+    state.input = net.input_state_gpu;
     status = cudaMemcpy(state.input, input, sizeof(float)*size, cudaMemcpyHostToDevice);
     state.truth = 0;
     state.train = 0;
     state.delta = 0;
 
     forward_network_gpu_cudnn(net, state); // network on GPU
-    status = cudaFree(state.input);
+    //status = cudaFree(state.input);
     //status = cudaFree(state.input_int8);
     //float *out = get_network_output_gpu(net);
     int i;

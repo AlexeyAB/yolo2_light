@@ -757,6 +757,8 @@ extern "C" {
         int do_input_calibration;
 
 #ifdef GPU
+        float *input_state_gpu;
+
         float **input_gpu;
         float **truth_gpu;
 #endif
