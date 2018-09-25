@@ -90,7 +90,7 @@ void forward_convolutional_layer_gpu_cudnn(layer l, network_state state)
 
 
     // blas_kernels.cu
-    fill_ongpu(l.outputs*l.batch, 0, l.output_gpu, 1);
+    //fill_ongpu(l.outputs*l.batch, 0, l.output_gpu, 1);
 
     int size = l.inputs * l.batch;
 
