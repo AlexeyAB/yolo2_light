@@ -1681,6 +1681,10 @@ void free_network(network net)
 #ifdef CUDNN
 void cudnn_convolutional_setup(layer *l)
 {
+#if(CUDNN_MAJOR >= 7)
+    cudnnSetConvolutionMathType(l->convDesc, CUDNN_TENSOR_OP_MATH);
+#endif  //(CUDNN_MAJOR >= 7)
+
     if (l->quantized)
     {
         cudnnDataType_t data_type = CUDNN_DATA_INT8x4;
@@ -2175,6 +2179,25 @@ maxpool_layer make_maxpool_layer(int batch, int h, int w, int c, int size, int s
     cudaError_t status;
     status = cudaMalloc((void **)&(l.output_gpu_int8), sizeof(int8_t)*output_size);
     //l.delta_gpu = cuda_make_array(l.delta, output_size);
+
+    cudnnStatus_t maxpool_status;
+    maxpool_status = cudnnCreatePoolingDescriptor(&l.poolingDesc);
+
+    maxpool_status = cudnnSetPooling2dDescriptor(
+        l.poolingDesc,
+        CUDNN_POOLING_MAX,
+        CUDNN_PROPAGATE_NAN,    // CUDNN_PROPAGATE_NAN, CUDNN_NOT_PROPAGATE_NAN
+        l.size,
+        l.size,
+        0, //l.pad,
+        0, //l.pad,
+        l.stride,
+        l.stride);
+
+    cudnnCreateTensorDescriptor(&l.srcTensorDesc);
+    cudnnCreateTensorDescriptor(&l.dstTensorDesc);
+    cudnnSetTensor4dDescriptor(l.srcTensorDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, l.batch, l.c, l.h, l.w);
+    cudnnSetTensor4dDescriptor(l.dstTensorDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, l.batch, l.out_c, l.out_h, l.out_w);
 #endif
 
 #ifdef OPENCL
@@ -4136,7 +4159,7 @@ void validate_detector_map(char *datacfg, char *cfgfile, char *weightfile, float
             //network_predict(net, X);
 #ifdef GPU
             if (quantized) {
-                network_predict_gpu_cudnn_quantized(net, X);    // quantized works only with Yolo v2
+                network_predict_gpu_cudnn_quantized(net, X);    // quantized
                 //nms = 0.2;
             }
             else {
@@ -4147,7 +4170,7 @@ void validate_detector_map(char *datacfg, char *cfgfile, char *weightfile, float
             network_predict_opencl(net, X);
 #else    // OPENCL
             if (quantized) {
-                network_predict_quantized(net, X);    // quantized works only with Tiny-models
+                network_predict_quantized(net, X);    // quantized
                 //nms = 0.2;
             }
             else {

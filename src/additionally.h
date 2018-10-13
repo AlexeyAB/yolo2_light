@@ -675,6 +675,7 @@ extern "C" {
         cudnnConvolutionFwdAlgo_t fw_algo;
         //cudnnConvolutionBwdDataAlgo_t bd_algo;
         //cudnnConvolutionBwdFilterAlgo_t bf_algo;
+        cudnnPoolingDescriptor_t poolingDesc;
 #endif
 #endif
 

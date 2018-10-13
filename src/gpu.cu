@@ -285,14 +285,35 @@ __global__ void forward_maxpool_layer_kernel(int n, int in_h, int in_w, int in_c
 
 void forward_maxpool_layer_gpu(maxpool_layer layer, network_state state)
 {
-    int h = layer.out_h;
-    int w = layer.out_w;
-    int c = layer.c;
+    //if (layer.stride == layer.size) {
+    if(1) {
+        cudnnStatus_t maxpool_status;
 
-    size_t n = h*w*c*layer.batch;
+        float alpha = 1, beta = 0;
+        maxpool_status = cudnnPoolingForward(
+            cudnn_handle(),
+            layer.poolingDesc,
+            &alpha,
+            layer.srcTensorDesc,
+            state.input,
+            &beta,
+            layer.dstTensorDesc,
+            layer.output_gpu);
 
-    forward_maxpool_layer_kernel << <cuda_gridsize(n), BLOCK >> >(n, layer.h, layer.w, layer.c, layer.stride, layer.size, layer.pad, state.input, layer.output_gpu, layer.indexes_gpu);
-    check_error(cudaPeekAtLastError());
+        //maxpool_status = cudnnDestroyPoolingDescriptor(poolingDesc);
+        //cudnnDestroyTensorDescriptor(layer.srcTensorDesc);
+        //cudnnDestroyTensorDescriptor(layer.dstTensorDesc);
+    }
+    else {
+        int h = layer.out_h;
+        int w = layer.out_w;
+        int c = layer.c;
+
+        size_t n = h*w*c*layer.batch;
+
+        forward_maxpool_layer_kernel << <cuda_gridsize(n), BLOCK >> > (n, layer.h, layer.w, layer.c, layer.stride, layer.size, layer.pad, state.input, layer.output_gpu, layer.indexes_gpu);
+        check_error(cudaPeekAtLastError());
+    }
 }
 
 // flatten
@@ -402,9 +423,19 @@ __global__ void activate_array_kernel(float *x, int n, ACTIVATION a)
     if (i < n) x[i] = activate_kernel(x[i], a);
 }
 
-void activate_array_ongpu(float *x, int n, ACTIVATION a)
+__global__ void activate_array_leaky_kernel(float *x, int n)
 {
-    activate_array_kernel << <cuda_gridsize(n), BLOCK >> >(x, n, a);
+    int index = blockIdx.x*blockDim.x + threadIdx.x;
+    if (index < n) {
+        float val = x[index];
+        x[index] = (val > 0) ? val : val / 10;
+    }
+}
+
+extern "C" void activate_array_ongpu(float *x, int n, ACTIVATION a)
+{
+    if (a == LEAKY) activate_array_leaky_kernel << <(n / BLOCK + 1), BLOCK, 0, 0 >> >(x, n);
+    else activate_array_kernel << <cuda_gridsize(n), BLOCK, 0, 0 >> >(x, n, a);
     check_error(cudaPeekAtLastError());
 }
 
