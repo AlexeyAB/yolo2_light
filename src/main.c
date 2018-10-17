@@ -153,7 +153,7 @@ void draw_detections_v3(image im, detection *dets, int num, float thresh, char *
 
 
 // Detect on Image: this function uses other functions not from this file
-void test_detector_cpu(char **names, char *cfgfile, char *weightfile, char *filename, float thresh, int quantized)
+void test_detector_cpu(char **names, char *cfgfile, char *weightfile, char *filename, float thresh, int quantized, int dont_show)
 {
     //image **alphabet = load_alphabet();            // image.c
     image **alphabet = NULL;
@@ -230,7 +230,9 @@ void test_detector_cpu(char **names, char *cfgfile, char *weightfile, char *file
         draw_detections_v3(im, dets, nboxes, thresh, names, alphabet, l.classes, ext_output);
 
         save_image_png(im, "predictions");    // image.c
-        show_image(im, "predictions");        // image.c
+        if (!dont_show) {
+            show_image(im, "predictions");    // image.c
+        }
 
         free_image(im);                    // image.c
         free_image(sized);                // image.c
@@ -446,7 +448,7 @@ static double get_wall_time()
 
 // Detect on Video: this function uses other functions not from this file
 void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const char *filename, char **names, int classes,
-    int frame_skip, char *prefix, int quantized, char *out_filename)
+    int frame_skip, char *prefix, int quantized, char *out_filename, int dont_show)
 {
     int delay = frame_skip;
     demo_names = names;
@@ -502,7 +504,7 @@ void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const ch
     det_s = in_s;
 
     int count = 0;
-    if (!prefix) {
+    if (!prefix && !dont_show) {
         cvNamedWindow("Demo", CV_WINDOW_NORMAL);
         cvMoveWindow("Demo", 0, 0);
         cvResizeWindow("Demo", 1352, 1013);
@@ -526,9 +528,11 @@ void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const ch
         if (pthread_create(&detect_thread, 0, detect_in_thread, 0)) error("Thread creation failed");
 
         if (!prefix) {
-            //show_image(disp, "Demo");
-            show_image_cv_ipl(show_img, "Demo");
-            int c = cvWaitKey(1);
+            if (!dont_show) {
+                //show_image(disp, "Demo");
+                show_image_cv_ipl(show_img, "Demo");
+                int c = cvWaitKey(1);
+            }
         }
         else {
             char buff[256];
@@ -569,7 +573,7 @@ void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const ch
 }
 #else
 void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const char *filename, char **names, int classes,
-    int frame_skip, char *prefix, int quantized, char *out_filename)
+    int frame_skip, char *prefix, int quantized, char *out_filename, int dont_show)
 {
     fprintf(stderr, "Demo needs OpenCV for webcam images.\n");
 }
@@ -579,6 +583,7 @@ void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const ch
 // get command line parameters and load objects names
 void run_detector(int argc, char **argv)
 {
+    int dont_show = find_arg(argc, argv, "-dont_show");
     char *prefix = find_char_arg(argc, argv, "-prefix", 0);
     float thresh = find_float_arg(argc, argv, "-thresh", .24);
     char *out_filename = find_char_arg(argc, argv, "-out_filename", 0);
@@ -613,14 +618,14 @@ void run_detector(int argc, char **argv)
     fclose(fp);
     int classes = obj_count;
 
-    if (0 == strcmp(argv[2], "test")) test_detector_cpu(names, cfg, weights, filename, thresh, quantized);
+    if (0 == strcmp(argv[2], "test")) test_detector_cpu(names, cfg, weights, filename, thresh, quantized, dont_show);
     //else if (0 == strcmp(argv[2], "train")) train_detector(datacfg, cfg, weights, gpus, ngpus, clear);
     //else if (0 == strcmp(argv[2], "valid")) validate_detector(datacfg, cfg, weights);
     //else if (0 == strcmp(argv[2], "recall")) validate_detector_recall(datacfg, cfg, weights);
     else if (0 == strcmp(argv[2], "map")) validate_detector_map(obj_names, cfg, weights, thresh, quantized);
     else if (0 == strcmp(argv[2], "calibrate")) validate_calibrate_valid(obj_names, cfg, weights, input_calibration);
     else if (0 == strcmp(argv[2], "demo")) {
-        demo(cfg, weights, thresh, cam_index, filename, names, classes, frame_skip, prefix, quantized, out_filename);
+        demo(cfg, weights, thresh, cam_index, filename, names, classes, frame_skip, prefix, quantized, out_filename, dont_show);
     }
 
     int i;

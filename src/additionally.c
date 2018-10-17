@@ -2155,8 +2155,6 @@ maxpool_layer make_maxpool_layer(int batch, int h, int w, int c, int size, int s
     l.w = w;
     l.c = c;
     l.pad = padding;
-    //l.out_w = (w + 2 * padding) / stride;
-    //l.out_h = (h + 2 * padding) / stride;
     l.out_w = (w + padding - size) / stride + 1;
     l.out_h = (h + padding - size) / stride + 1;
     l.out_c = c;
@@ -3233,7 +3231,6 @@ maxpool_layer parse_maxpool(list *options, size_params params)
 {
     int stride = option_find_int(options, "stride", 1);
     int size = option_find_int(options, "size", stride);
-    //int padding = option_find_int_quiet(options, "padding", (size - 1) / 2);
     int padding = option_find_int_quiet(options, "padding", size - 1);
 
     int batch, h, w, c;

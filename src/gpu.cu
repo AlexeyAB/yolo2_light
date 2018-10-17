@@ -245,8 +245,6 @@ void scale_bias_gpu(float *output, float *biases, int batch, int n, int size)
 // max-pool layer
 __global__ void forward_maxpool_layer_kernel(int n, int in_h, int in_w, int in_c, int stride, int size, int pad, float *input, float *output, int *indexes)
 {
-    //int h = (in_h + 2 * pad) / stride;
-    //int w = (in_w + 2 * pad) / stride;
     int h = (in_h + pad - size) / stride + 1;
     int w = (in_w + pad - size) / stride + 1;
     int c = in_c;
