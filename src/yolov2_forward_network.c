@@ -35,7 +35,7 @@ void forward_convolutional_layer_cpu(layer l, network_state state)
     int i, f, j;
 
     // fill zero (ALPHA)
-    for (i = 0; i < l.outputs; ++i) l.output[i] = 0;
+    for (i = 0; i < l.outputs*l.batch; ++i) l.output[i] = 0;
 
     if (l.xnor) {
         if (!l.align_bit_weights)
@@ -141,6 +141,7 @@ void forward_convolutional_layer_cpu(layer l, network_state state)
         }
         c += n*m;
         state.input += l.c*l.h*l.w;
+
     }
 
 #endif
@@ -149,28 +150,31 @@ void forward_convolutional_layer_cpu(layer l, network_state state)
 
     // 2. Batch normalization
     if (l.batch_normalize) {
-        for (f = 0; f < l.out_c; ++f) {
-            for (i = 0; i < out_size; ++i) {
-                int index = f*out_size + i;
-                l.output[index] = (l.output[index] - l.rolling_mean[f]) / (sqrtf(l.rolling_variance[f]) + .000001f);
+        for (int b=0; b<l.batch; b++) {
+            for (f = 0; f < l.out_c; ++f) {
+                for (i = 0; i < out_size; ++i) {
+                    int index = f*out_size + i;
+                    l.output[index+b*l.outputs] = (l.output[index+b*l.outputs] - l.rolling_mean[f]) / (sqrtf(l.rolling_variance[f]) + .000001f);
+                }
             }
-        }
-
-        // scale_bias
-        for (i = 0; i < l.out_c; ++i) {
-            for (j = 0; j < out_size; ++j) {
-                l.output[i*out_size + j] *= l.scales[i];
+        
+            // scale_bias
+            for (i = 0; i < l.out_c; ++i) {
+                for (j = 0; j < out_size; ++j) {
+                    l.output[i*out_size + j+b*l.outputs] *= l.scales[i];
+                }
             }
         }
     }
 
-
     // 3. Add BIAS
     //if (l.batch_normalize)
-    for (i = 0; i < l.n; ++i) {
-        for (j = 0; j < out_size; ++j) {
-            l.output[i*out_size + j] += l.biases[i];
-        }
+    for (int b=0; b<l.batch; b++) {
+	    for (i = 0; i < l.n; ++i) {
+		    for (j = 0; j < out_size; ++j) {
+			    l.output[i*out_size + j+b*l.outputs] += l.biases[i];
+		    }
+	    }
     }
 
     // 4. Activation function (LEAKY or LINEAR)
@@ -179,7 +183,8 @@ void forward_convolutional_layer_cpu(layer l, network_state state)
     //        l.output[i] = leaky_activate(l.output[i]);
     //    }
     //}
-    activate_array_cpu_custom(l.output, l.n*out_size, l.activation);
+    //activate_array_cpu_custom(l.output, l.n*out_size, l.activation);
+    activate_array_cpu_custom(l.output, l.outputs*l.batch, l.activation);
 
 }
 
@@ -194,12 +199,12 @@ void forward_maxpool_layer_cpu(const layer l, network_state state)
     }
 
     int b, i, j, k, m, n;
-    int w_offset = -l.pad;
-    int h_offset = -l.pad;
+    const int w_offset = -l.pad;
+    const int h_offset = -l.pad;
 
-    int h = l.out_h;
-    int w = l.out_w;
-    int c = l.c;
+    const int h = l.out_h;
+    const int w = l.out_w;
+    const int c = l.c;
 
     // batch index
     for (b = 0; b < l.batch; ++b) {
