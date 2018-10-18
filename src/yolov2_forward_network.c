@@ -150,14 +150,15 @@ void forward_convolutional_layer_cpu(layer l, network_state state)
 
     // 2. Batch normalization
     if (l.batch_normalize) {
-        for (int b=0; b<l.batch; b++) {
+        int b;
+        for (b = 0; b < l.batch; b++) {
             for (f = 0; f < l.out_c; ++f) {
                 for (i = 0; i < out_size; ++i) {
                     int index = f*out_size + i;
                     l.output[index+b*l.outputs] = (l.output[index+b*l.outputs] - l.rolling_mean[f]) / (sqrtf(l.rolling_variance[f]) + .000001f);
                 }
             }
-        
+
             // scale_bias
             for (i = 0; i < l.out_c; ++i) {
                 for (j = 0; j < out_size; ++j) {
