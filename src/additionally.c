@@ -279,6 +279,7 @@ static inline unsigned char get_bit(unsigned char const*const src, size_t index)
     return val;
 }
 
+/*
 static inline unsigned char reverse_byte_1(char a)
 {
     return ((a & 0x1) << 7) | ((a & 0x2) << 5) |
@@ -336,6 +337,94 @@ void transpose_bin(char *A, char *B, const int n, const int m,
             int b_index = j*ldb + i;
             //transpose_8x8_bits_my(&A[a_index/8], &B[b_index/8], lda/8, ldb/8);
             transpose8rS32_reversed_diagonale(&A[a_index / 8], lda / 8, ldb / 8, &B[b_index / 8]);
+        }
+        for (; j < m; ++j) {
+            if (get_bit(A, i*lda + j)) set_bit(B, j*ldb + i);
+        }
+    }
+}
+*/
+
+uint8_t reverse_8_bit(uint8_t a) {
+    return ((a * 0x0802LU & 0x22110LU) | (a * 0x8020LU & 0x88440LU)) * 0x10101LU >> 16;
+}
+
+uint32_t reverse_32_bit(uint32_t a)
+{
+    // unsigned int __rbit(unsigned int val) // for ARM    //__asm__("rbit %0, %1\n" : "=r"(output) : "r"(input));
+    return (reverse_8_bit(a >> 24) << 0) |
+        (reverse_8_bit(a >> 16) << 8) |
+        (reverse_8_bit(a >> 8) << 16) |
+        (reverse_8_bit(a >> 0) << 24);
+}
+
+#define swap(a0, a1, j, m) t = (a0 ^ (a1 >>j)) & m; a0 = a0 ^ t; a1 = a1 ^ (t << j);
+
+void transpose32_optimized(uint32_t A[32]) {
+    int j, k;
+    unsigned m, t;
+
+    //m = 0x0000FFFF;
+    //for (j = 16; j != 0; j = j >> 1, m = m ^ (m << j)) {
+    //    for (k = 0; k < 32; k = (k + j + 1) & ~j) {
+    //        t = (A[k] ^ (A[k + j] >> j)) & m;
+    //        A[k] = A[k] ^ t;
+    //        A[k + j] = A[k + j] ^ (t << j);
+    //    }
+    //}
+
+    j = 16;
+    m = 0x0000FFFF;
+    for (k = 0; k < 32; k = (k + j + 1) & ~j) { swap(A[k], A[k + j], j, m); }
+
+    j = 8;
+    m = 0x00ff00ff;
+    for (k = 0; k < 32; k = (k + j + 1) & ~j) { swap(A[k], A[k + j], j, m); }
+
+    j = 4;
+    m = 0x0f0f0f0f;
+    for (k = 0; k < 32; k = (k + j + 1) & ~j) { swap(A[k], A[k + j], j, m); }
+
+    j = 2;
+    m = 0x33333333;
+    for (k = 0; k < 32; k = (k + j + 1) & ~j) { swap(A[k], A[k + j], j, m); }
+
+    j = 1;
+    m = 0x55555555;
+    for (k = 0; k < 32; k = (k + j + 1) & ~j) { swap(A[k], A[k + j], j, m); }
+
+    // reverse Y
+    for (j = 0; j < 16; ++j) {
+        uint32_t tmp = A[j];
+        A[j] = reverse_32_bit(A[31 - j]);
+        A[31 - j] = reverse_32_bit(tmp);
+    }
+}
+
+void transpose_32x32_bits_reversed_diagonale(uint32_t *A, uint32_t *B, int m, int n)
+{
+    unsigned A_tmp[32];
+    int i;
+    #pragma unroll
+    for (i = 0; i < 32; ++i) A_tmp[i] = A[i * m];
+    transpose32_optimized(A_tmp);
+    #pragma unroll
+    for (i = 0; i < 32; ++i) B[i*n] = A_tmp[i];
+}
+
+// transpose by 32-bit
+void transpose_bin(uint32_t *A, uint32_t *B, const int n, const int m,
+    const int lda, const int ldb, const int block_size)
+{
+    int i;
+    #pragma omp parallel for
+    for (i = 0; i < n; i += 32) {
+        int j;
+        for (j = 0; j < m; j += 32) {
+            int a_index = i*lda + j;
+            int b_index = j*ldb + i;
+            transpose_32x32_bits_reversed_diagonale(&A[a_index / 32], &B[b_index / 32], lda / 32, ldb / 32);
+            //transpose_32x32_bits_my(&A[a_index/32], &B[b_index/32], lda/32, ldb/32);
         }
         for (; j < m; ++j) {
             if (get_bit(A, i*lda + j)) set_bit(B, j*ldb + i);
@@ -1683,16 +1772,23 @@ void cudnn_convolutional_setup(layer *l)
 {
 #if(CUDNN_MAJOR >= 7)
     cudnnSetConvolutionMathType(l->convDesc, CUDNN_TENSOR_OP_MATH);
+#if((CUDNN_MAJOR*10 + CUDNN_MINOR) >= 72)   // cuDNN >= 7.2
+    cudnnSetConvolutionMathType(l->convDesc, CUDNN_TENSOR_OP_MATH_ALLOW_CONVERSION);
+#endif  //(CUDNN_MAJOR >= 7.2)
 #endif  //(CUDNN_MAJOR >= 7)
 
     if (l->quantized)
     {
-        cudnnDataType_t data_type = CUDNN_DATA_INT8x4;
+        cudnnDataType_t cudnn_data_type = CUDNN_DATA_INT8x4;
         cudnnTensorFormat_t tensor_format = CUDNN_TENSOR_NCHW_VECT_C;
         cudnnTensorFormat_t dst_tensor_format = CUDNN_TENSOR_NCHW;
 
-        cudnnSetTensor4dDescriptor(l->srcTensorDesc, CUDNN_TENSOR_NCHW_VECT_C, CUDNN_DATA_INT8x4, l->batch, l->c, l->h, l->w);
-        cudnnSetFilter4dDescriptor(l->weightDesc, CUDNN_DATA_INT8x4, CUDNN_TENSOR_NCHW_VECT_C, l->n, l->c, l->size, l->size);
+#if((CUDNN_MAJOR*10 + CUDNN_MINOR) >= 72)
+        //if (l->c % 32 == 0) cudnn_data_type = CUDNN_DATA_INT8x32;   // Tensor Cores for INT8
+#endif  //(CUDNN_MAJOR >= 7.2)
+
+        cudnnSetTensor4dDescriptor(l->srcTensorDesc, CUDNN_TENSOR_NCHW_VECT_C, cudnn_data_type, l->batch, l->c, l->h, l->w);
+        cudnnSetFilter4dDescriptor(l->weightDesc, cudnn_data_type, CUDNN_TENSOR_NCHW_VECT_C, l->n, l->c, l->size, l->size);
         cudnnSetTensor4dDescriptor(l->dstTensorDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, l->batch, l->out_c, l->out_h, l->out_w);
         cudnnSetConvolution2dDescriptor(l->convDesc, l->pad, l->pad, l->stride, l->stride, 1, 1, CUDNN_CROSS_CORRELATION, CUDNN_DATA_INT32);    // cudnn 7
 
@@ -1723,6 +1819,8 @@ void cudnn_convolutional_setup(layer *l)
             CUDNN_CONVOLUTION_FWD_PREFER_FASTEST,
             0,
             &l->fw_algo);
+
+        //l->fw_algo = CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM; // un-comment to use Tensor Cores for cuDNN >= 7.2
     }
 }
 #endif

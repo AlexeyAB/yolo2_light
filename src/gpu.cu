@@ -285,8 +285,8 @@ __global__ void forward_maxpool_layer_kernel(int n, int in_h, int in_w, int in_c
 
 void forward_maxpool_layer_gpu(maxpool_layer layer, network_state state)
 {
-    //if (layer.stride == layer.size) {
-    if(1) {
+    if (layer.stride == layer.size) {
+    //if(1) {
         cudnnStatus_t maxpool_status;
 
         float alpha = 1, beta = 0;

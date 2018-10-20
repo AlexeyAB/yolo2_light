@@ -599,9 +599,15 @@ void init_gpu_int8x4(network net)
                 cudnnCreateTensorDescriptor(&src_weights_desc);
                 cudnnSetTensor4dDescriptor(src_weights_desc, CUDNN_TENSOR_NCHW, CUDNN_DATA_INT8, l.n, l.c, l.size, l.size);
 
+                cudnnDataType_t cudnn_data_type = CUDNN_DATA_INT8x4;
+#if((CUDNN_MAJOR*10 + CUDNN_MINOR) >= 72)
+                //if (l.c % 32 == 0) cudnn_data_type = CUDNN_DATA_INT8x32;   // Tensor Cores for INT8
+#endif  //(CUDNN_MAJOR >= 7.2)
+
                 cudnnTensorDescriptor_t dst_weights_desc;
                 cudnnCreateTensorDescriptor(&dst_weights_desc);
-                cudnnSetTensor4dDescriptor(dst_weights_desc, CUDNN_TENSOR_NCHW_VECT_C, CUDNN_DATA_INT8x4, l.n, l.c, l.size, l.size);
+                cudnnSetTensor4dDescriptor(dst_weights_desc, CUDNN_TENSOR_NCHW_VECT_C, cudnn_data_type, l.n, l.c, l.size, l.size);
+
 
                 float one = 1;
                 float zero = 0;
