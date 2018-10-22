@@ -234,7 +234,7 @@ extern "C" {
     // blas.c
     void fill_cpu(int N, float ALPHA, float *X, int INCX);
 
-    void transpose_bin(char *A, char *B, const int n, const int m,
+    void transpose_bin(uint32_t *A, uint32_t *B, const int n, const int m,
         const int lda, const int ldb, const int block_size);
 
     // AVX2
