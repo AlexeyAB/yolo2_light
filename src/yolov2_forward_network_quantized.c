@@ -80,7 +80,7 @@ float get_multiplier(float *arr_ptr, int arr_size, int bits_length)
     }
     //index_max_count = index_max_count + 2;    // optimal shift multipler
     float multiplier = 1 / (start_range * powf(2., (float)index_max_count));
-    //printf(" max_count_range = %d, index_max_count = %d, multiplier = %g \n", 
+    //printf(" max_count_range = %d, index_max_count = %d, multiplier = %g \n",
     //    max_count_range, index_max_count, multiplier);
     free(count);
     return multiplier;
@@ -112,8 +112,8 @@ void draw_distribution(float *arr_ptr, int arr_size, char *name)
             max_count_range = count[j];
     }
 
-    cvNamedWindow("Wights", CV_WINDOW_NORMAL);
-    cvResizeWindow("Wights", img_w, img_h);
+    cvNamedWindow("Distribution", CV_WINDOW_NORMAL);
+    cvResizeWindow("Distribution", img_w, img_h);
 
     IplImage *img = cvCreateImage(cvSize(img_w, img_h), IPL_DEPTH_8U, 3);
 
@@ -160,7 +160,7 @@ void draw_distribution(float *arr_ptr, int arr_size, char *name)
     }
     cvPutText(img, "X and Y are log2", cvPoint(img_w / 2 - 100, img_h - 10), &font, CV_RGB(32, 64, 128));
 
-    cvShowImage("Wights", img);
+    cvShowImage("Distribution", img);
     cvWaitKey(0);
 
     free(count);
@@ -264,7 +264,7 @@ void gemm_nn_int8_int16_conv16(int M, int N, int K, int8_t ALPHA,
 
 
                 tmp128 = _mm256_extractf128_si256(d, 0);// get low 128 bit
-                b = _mm256_cvtepi8_epi16(tmp128);        // int8 -> int16    
+                b = _mm256_cvtepi8_epi16(tmp128);        // int8 -> int16
 
                 b = _mm256_mullo_epi16(a, b);    // B = A * B
 
@@ -325,7 +325,7 @@ void gemm_nn_int8_int16(int M, int N, int K, int8_t ALPHA,
                 d = _mm256_loadu_si256((__m256i*)&B[index]);
 
                 tmp128 = _mm256_extractf128_si256(d, 0);// get low 128 bit
-                b = _mm256_cvtepi8_epi16(tmp128);        // int8 -> int16    
+                b = _mm256_cvtepi8_epi16(tmp128);        // int8 -> int16
 
                 b = _mm256_mullo_epi16(a, b);    // B = A * B
 
@@ -401,7 +401,7 @@ void gemm_nn_int8_int16(int M, int N, int K, int8_t ALPHA,
                 int index = k*ldb + j;
                 d = _mm_loadu_si128((__m128i*)&B[index]);
 
-                b = _mm_cvtepi8_epi16(d);    // int8 -> int16    
+                b = _mm_cvtepi8_epi16(d);    // int8 -> int16
 
                 b = _mm_mullo_epi16(a, b);    // B = A * B
 
@@ -526,8 +526,8 @@ void gemm_nn_int8_int16_conv16(int M, int N, int K, int8_t ALPHA,
 void forward_convolutional_layer_q(layer l, network_state state)
 {
 
-    int out_h = (l.h + 2 * l.pad - l.size) / l.stride + 1;    // output_height=input_height for stride=1 and pad=1 
-    int out_w = (l.w + 2 * l.pad - l.size) / l.stride + 1;    // output_width=input_width for stride=1 and pad=1 
+    int out_h = (l.h + 2 * l.pad - l.size) / l.stride + 1;    // output_height=input_height for stride=1 and pad=1
+    int out_w = (l.w + 2 * l.pad - l.size) / l.stride + 1;    // output_width=input_width for stride=1 and pad=1
     int i, f, j;
     int const out_size = out_h*out_w;
     size_t const weights_size = l.size*l.size*l.c*l.n;
@@ -542,8 +542,8 @@ void forward_convolutional_layer_q(layer l, network_state state)
     // l.size - width and height of filters (the same size for all filters)
 
 
-    //draw_distribution(l.weights, weights_size, NULL);
-    //draw_distribution(state.input, l.inputs, NULL);
+    //draw_distribution(l.weights, weights_size, "weights");
+    //draw_distribution(state.input, l.inputs, "input");
 
     typedef int16_t conv_t;    // l.output
     conv_t *output_q = calloc(l.outputs, sizeof(conv_t));
@@ -578,12 +578,12 @@ void forward_convolutional_layer_q(layer l, network_state state)
     conv_t *c = output_q;    // int16_t
 
     // convolution as GEMM (as part of BLAS)
-    //for (i = 0; i < l.batch; ++i) {        
+    //for (i = 0; i < l.batch; ++i) {
     im2col_cpu_int8(state.input_int8, l.c, l.h, l.w, l.size, l.stride, l.pad, b);    // here
     //gemm_nn_int8_int16(m, n, k, 1, a, k, b, n, c, n);    // single-thread gemm
 
     int t;    // multi-thread gemm
-#pragma omp parallel for
+    #pragma omp parallel for
     for (t = 0; t < m; ++t) {
         gemm_nn_int8_int16(1, n, k, 1, a + t*k, k, b, n, c + t*n, n);
         //gemm_nn_int8_int16_conv16(1, n, k, 1, a + t*k, k, b, n, c + t*n, n);
@@ -606,7 +606,7 @@ void forward_convolutional_layer_q(layer l, network_state state)
     //    }
     //}
 
-    // cuDNN: y = alpha1 * conv(x) + bias 
+    // cuDNN: y = alpha1 * conv(x) + bias
     for (fil = 0; fil < l.n; ++fil) {
         for (j = 0; j < out_size; ++j) {
             l.output[fil*out_size + j] += l.biases[fil];
@@ -634,8 +634,8 @@ void forward_convolutional_layer_q(layer l, network_state state)
 void forward_convolutional_layer_q_old(layer l, network_state state, int return_float)
 {
 
-    int out_h = (l.h + 2 * l.pad - l.size) / l.stride + 1;    // output_height=input_height for stride=1 and pad=1 
-    int out_w = (l.w + 2 * l.pad - l.size) / l.stride + 1;    // output_width=input_width for stride=1 and pad=1 
+    int out_h = (l.h + 2 * l.pad - l.size) / l.stride + 1;    // output_height=input_height for stride=1 and pad=1
+    int out_w = (l.w + 2 * l.pad - l.size) / l.stride + 1;    // output_width=input_width for stride=1 and pad=1
     int i, f, j;
     int const out_size = out_h*out_w;
     size_t const weights_size = l.size*l.size*l.c*l.n;
@@ -668,7 +668,7 @@ void forward_convolutional_layer_q_old(layer l, network_state state, int return_
                                                             // 1. Convolution !!!
 #ifndef GEMMCONV
     int fil;
-    // filter index 
+    // filter index
 #pragma omp parallel for      // "omp parallel for" - automatic parallelization of loop by using OpenMP
     for (fil = 0; fil < l.n; ++fil) {
 
@@ -707,8 +707,8 @@ void forward_convolutional_layer_q_old(layer l, network_state state, int return_
                             sum += (int32_t)state.input_int8[input_index] * (int32_t)l.weights_int8[weights_index];
                         }
                     }
-                    // l.output[filters][width][height] += 
-                    //        state.input[channels][width][height] * 
+                    // l.output[filters][width][height] +=
+                    //        state.input[channels][width][height] *
                     //        l.weights[filters][channels][filter_width][filter_height];
 
 
@@ -731,7 +731,7 @@ void forward_convolutional_layer_q_old(layer l, network_state state, int return_
     conv_t *c = output_q;    // int16_t
 
     // convolution as GEMM (as part of BLAS)
-    //for (i = 0; i < l.batch; ++i) {        
+    //for (i = 0; i < l.batch; ++i) {
     im2col_cpu_int8(state.input_int8, l.c, l.h, l.w, l.size, l.stride, l.pad, b);    // here
     //gemm_nn_int8_int16(m, n, k, 1, a, k, b, n, c, n);    // single-thread gemm
 
@@ -756,7 +756,7 @@ void forward_convolutional_layer_q_old(layer l, network_state state, int return_
         }
     }
 
-    // cuDNN: y = alpha1 * conv(x) + bias 
+    // cuDNN: y = alpha1 * conv(x) + bias
     for (fil = 0; fil < l.n; ++fil) {
         for (j = 0; j < out_size; ++j) {
             output_q[fil*out_size + j] += l.biases_quant[fil];
@@ -951,7 +951,7 @@ static void softmax_tree(float *input, int batch, int inputs, float temp, tree *
 // ---
 
 
-// Region layer - just change places of array items, then do logistic_activate and softmax 
+// Region layer - just change places of array items, then do logistic_activate and softmax
 void forward_region_layer_q(const layer l, network_state state)
 {
     int i, b;
@@ -1417,16 +1417,16 @@ void quantinization_and_get_multipliers(network net)
 
             // get optimal multipliers - for Weights
             //float *weights_multiplier = (float *)calloc(l->n, sizeof(float));
-            //l->output_multipler = (float *)calloc(l->n, sizeof(float));            
+            //l->output_multipler = (float *)calloc(l->n, sizeof(float));
 
             //float weights_multiplier_single = entropy_calibration(l->weights, weights_size, 1.0 / (2048), (2048));
 
             //float weights_multiplier_single = entropy_calibration(l->weights, weights_size, 1.0 / 4096, 4096) / 2;
             //if (j == 0) weights_multiplier_single = entropy_calibration(l->weights, weights_size, 1.0 / 2, 2048);
 
-            float old_weight_mult = get_multiplier(l->weights, weights_size, 8) / 4;    // good [2 - 8], best 4            
+            float old_weight_mult = get_multiplier(l->weights, weights_size, 8) / 4;    // good [2 - 8], best 4
             float weights_multiplier_single = old_weight_mult;
-            
+
             //float old_weight_mult = get_multiplier(l->weights, weights_size, 7) / 4;
             printf(" old_weight_mult = %f, weights_multiplier_single = %f \n\n", old_weight_mult, weights_multiplier_single);
             //weights_multiplier_single = old_weight_mult;
