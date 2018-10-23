@@ -203,7 +203,7 @@ void binary_align_weights(convolutional_layer *l)
     binarize_weights(l->weights, m, k, l->binary_weights);
 
     size_t align_weights_size = new_lda * m;
-    l->align_bit_weights_size = align_weights_size / 8;// +1;
+    l->align_bit_weights_size = align_weights_size / 8 + 1;
     float *align_weights = calloc(align_weights_size, sizeof(float));
     l->align_bit_weights = calloc(l->align_bit_weights_size, sizeof(char));
 
@@ -435,7 +435,7 @@ void transpose_bin(uint32_t *A, uint32_t *B, const int n, const int m,
 // -------------- blas.c --------------
 
 
-#ifdef AVX
+#ifdef AVX1
 
 #ifdef _WIN64
 // Windows
@@ -1178,6 +1178,26 @@ void forward_maxpool_layer_avx(float *src, float *dst, int *indexes, int size, i
     }
 }
 
+static inline int popcnt_64(uint64_t val64) {
+#ifdef WIN32  // Windows
+#ifdef _WIN64 // Windows 64-bit
+    int tmp_count = __popcnt64(val64);
+#else         // Windows 32-bit
+    int tmp_count = __popcnt(val64);
+    tmp_count += __popcnt(val64 >> 32);
+#endif
+#else   // Linux
+#ifdef __x86_64__  // Linux 64-bit
+    int tmp_count = __builtin_popcountll(val64);
+#else  // Linux 32-bit
+    int tmp_count = __builtin_popcount(val64);
+    tmp_count += __builtin_popcount(val64);
+#endif
+#endif
+    return tmp_count;
+}
+
+
 void gemm_nn_custom_bin_mean_transposed(int M, int N, int K, float ALPHA_UNUSED,
     unsigned char *A, int lda,
     unsigned char *B, int ldb,
@@ -1185,7 +1205,7 @@ void gemm_nn_custom_bin_mean_transposed(int M, int N, int K, float ALPHA_UNUSED,
 {
     int i, j, k, h;
 
-#pragma omp parallel for
+    #pragma omp parallel for
     for (i = 0; i < M; ++i) {   // l.n - filters [16 - 55 - 1024]
         float mean_val = mean_arr[i];
 
@@ -1197,11 +1217,7 @@ void gemm_nn_custom_bin_mean_transposed(int M, int N, int K, float ALPHA_UNUSED,
                 uint64_t b_bit64 = *((uint64_t *)(B + (j*ldb + k) / 8));
                 uint64_t c_bit64 = xnor_int64(a_bit64, b_bit64);
 
-#ifdef WIN32
-                int tmp_count = __popcnt64(c_bit64);
-#else
-                int tmp_count = __builtin_popcountll(c_bit64);
-#endif
+                int tmp_count = popcnt_64(c_bit64);
 
                 if (K - k < 64)  tmp_count = tmp_count - (64 - (K - k));    // remove extra bits
                 count += tmp_count;
@@ -1879,6 +1895,8 @@ void free_layer(layer l)
     //if (l.scale_updates)      free(l.scale_updates);
     if (l.weights)            free(l.weights);
     if (l.weights_int8)       free(l.weights_int8);
+    if (l.align_bit_weights)  free(l.align_bit_weights);
+    if (l.mean_arr)           free(l.mean_arr);
     //if (l.weight_updates)     free(l.weight_updates);
     //if (l.delta)              free(l.delta);
     if (l.output)             free(l.output);
@@ -1929,6 +1947,12 @@ void free_layer(layer l)
     if (l.mean_delta_gpu)          cuda_free(l.mean_delta_gpu);
     if (l.x_gpu)                   cuda_free(l.x_gpu);
     if (l.x_norm_gpu)              cuda_free(l.x_norm_gpu);
+
+    if (l.align_bit_weights_gpu)   cuda_free(l.align_bit_weights_gpu);
+    if (l.mean_arr_gpu)            cuda_free(l.mean_arr_gpu);
+    if (l.align_workspace_gpu)     cuda_free(l.align_workspace_gpu);
+    if (l.transposed_align_workspace_gpu) cuda_free(l.transposed_align_workspace_gpu);
+
     if (l.weights_gpu)             cuda_free(l.weights_gpu);
     //if (l.weight_updates_gpu)      cuda_free(l.weight_updates_gpu);
     if (l.biases_gpu)              cuda_free(l.biases_gpu);
@@ -3958,17 +3982,19 @@ int get_yolo_detections(layer l, int w, int h, int netw, int neth, float thresh,
         for (n = 0; n < l.n; ++n) {
             int obj_index = entry_index(l, 0, n*l.w*l.h + i, 4);
             float objectness = predictions[obj_index];
-            if (objectness <= thresh) continue;
-            int box_index = entry_index(l, 0, n*l.w*l.h + i, 0);
-            dets[count].bbox = get_yolo_box(predictions, l.biases, l.mask[n], box_index, col, row, l.w, l.h, netw, neth, l.w*l.h);
-            dets[count].objectness = objectness;
-            dets[count].classes = l.classes;
-            for (j = 0; j < l.classes; ++j) {
-                int class_index = entry_index(l, 0, n*l.w*l.h + i, 4 + 1 + j);
-                float prob = objectness*predictions[class_index];
-                dets[count].prob[j] = (prob > thresh) ? prob : 0;
+            //if (objectness <= thresh) continue;   // incorrect behavior for Nan values
+            if (objectness > thresh) {
+                int box_index = entry_index(l, 0, n*l.w*l.h + i, 0);
+                dets[count].bbox = get_yolo_box(predictions, l.biases, l.mask[n], box_index, col, row, l.w, l.h, netw, neth, l.w*l.h);
+                dets[count].objectness = objectness;
+                dets[count].classes = l.classes;
+                for (j = 0; j < l.classes; ++j) {
+                    int class_index = entry_index(l, 0, n*l.w*l.h + i, 4 + 1 + j);
+                    float prob = objectness*predictions[class_index];
+                    dets[count].prob[j] = (prob > thresh) ? prob : 0;
+                }
+                ++count;
             }
-            ++count;
         }
     }
     correct_yolo_boxes(dets, count, w, h, netw, neth, relative, letter);
