@@ -435,7 +435,7 @@ void transpose_bin(uint32_t *A, uint32_t *B, const int n, const int m,
 // -------------- blas.c --------------
 
 
-#ifdef AVX1
+#ifdef AVX
 
 #ifdef _WIN64
 // Windows

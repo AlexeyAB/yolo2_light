@@ -91,6 +91,7 @@ float get_multiplier(float *arr_ptr, int arr_size, int bits_length)
 #include "opencv2/highgui/highgui_c.h"
 #include "opencv2/core/core_c.h"
 #include "opencv2/core/version.hpp"
+#define CV_RGB(r, g, b) cvScalar( (b), (g), (r), 0 )
 
 void draw_distribution(float *arr_ptr, int arr_size, char *name)
 {
@@ -545,6 +546,7 @@ void forward_convolutional_layer_q(layer l, network_state state)
     //draw_distribution(l.weights, weights_size, "weights");
     //draw_distribution(state.input, l.inputs, "input");
 
+    //typedef int32_t conv_t;    // l.output
     typedef int16_t conv_t;    // l.output
     conv_t *output_q = calloc(l.outputs, sizeof(conv_t));
 
@@ -587,7 +589,7 @@ void forward_convolutional_layer_q(layer l, network_state state)
     for (t = 0; t < m; ++t) {
         gemm_nn_int8_int16(1, n, k, 1, a + t*k, k, b, n, c + t*n, n);
         //gemm_nn_int8_int16_conv16(1, n, k, 1, a + t*k, k, b, n, c + t*n, n);
-        //gemm_nn_int8_int32(1, n, k, 1, a + t*k, k, b, n, c + t*n, n); conv_t should be int32_t
+        //gemm_nn_int8_int32(1, n, k, 1, a + t*k, k, b, n, c + t*n, n); // conv_t should be int32_t
     }
     //}
 
