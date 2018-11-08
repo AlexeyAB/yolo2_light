@@ -585,7 +585,8 @@ void run_detector(int argc, char **argv)
 {
     int dont_show = find_arg(argc, argv, "-dont_show");
     char *prefix = find_char_arg(argc, argv, "-prefix", 0);
-    float thresh = find_float_arg(argc, argv, "-thresh", .24);
+    float thresh = find_float_arg(argc, argv, "-thresh", .25);
+    float iou_thresh = find_float_arg(argc, argv, "-iou_thresh", .5);    // 0.5 for mAP
     char *out_filename = find_char_arg(argc, argv, "-out_filename", 0);
     int cam_index = find_int_arg(argc, argv, "-c", 0);
     int quantized = find_arg(argc, argv, "-quantized");
@@ -622,7 +623,7 @@ void run_detector(int argc, char **argv)
     //else if (0 == strcmp(argv[2], "train")) train_detector(datacfg, cfg, weights, gpus, ngpus, clear);
     //else if (0 == strcmp(argv[2], "valid")) validate_detector(datacfg, cfg, weights);
     //else if (0 == strcmp(argv[2], "recall")) validate_detector_recall(datacfg, cfg, weights);
-    else if (0 == strcmp(argv[2], "map")) validate_detector_map(obj_names, cfg, weights, thresh, quantized);
+    else if (0 == strcmp(argv[2], "map")) validate_detector_map(obj_names, cfg, weights, thresh, quantized, iou_thresh);
     else if (0 == strcmp(argv[2], "calibrate")) validate_calibrate_valid(obj_names, cfg, weights, input_calibration);
     else if (0 == strcmp(argv[2], "demo")) {
         demo(cfg, weights, thresh, cam_index, filename, names, classes, frame_skip, prefix, quantized, out_filename, dont_show);

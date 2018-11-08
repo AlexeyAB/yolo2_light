@@ -918,7 +918,7 @@ extern "C" {
     float *network_predict_cpu(network net, float *input);
 
     // calculate mAP
-    void validate_detector_map(char *datacfg, char *cfgfile, char *weightfile, float thresh_calc_avg_iou, int quantized);
+    void validate_detector_map(char *datacfg, char *cfgfile, char *weightfile, float thresh_calc_avg_iou, int quantized, const float iou_thresh);
 
     // fuse convolutional and batch_norm weights into one convolutional-layer
     void yolov2_fuse_conv_batchnorm(network net);

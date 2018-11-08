@@ -4183,7 +4183,7 @@ void do_nms_sort_v3(detection *dets, int total, int classes, float thresh)
     }
 }
 
-void validate_detector_map(char *datacfg, char *cfgfile, char *weightfile, float thresh_calc_avg_iou, int quantized)
+void validate_detector_map(char *datacfg, char *cfgfile, char *weightfile, float thresh_calc_avg_iou, int quantized, const float iou_thresh)
 {
     list *options = read_data_cfg(datacfg);
     char *valid_images = option_find_str(options, "valid", "data/train.txt");
@@ -4224,7 +4224,7 @@ void validate_detector_map(char *datacfg, char *cfgfile, char *weightfile, float
 
     const float thresh = .005;
     float nms = .45;
-    const float iou_thresh = 0.5;
+    //const float iou_thresh = 0.5;
 
     int nthreads = 4;
     image *val = calloc(nthreads, sizeof(image));
@@ -4523,8 +4523,12 @@ void validate_detector_map(char *datacfg, char *cfgfile, char *weightfile, float
         thresh_calc_avg_iou, tp_for_thresh, fp_for_thresh, unique_truth_count - tp_for_thresh, avg_iou * 100);
 
     mean_average_precision = mean_average_precision / classes;
-    printf("\n mean average precision (mAP) = %f, or %2.2f %% \n", mean_average_precision, mean_average_precision * 100);
-
+    if (iou_thresh == 0.5) {
+        printf("\n mean average precision (mAP) = %f, or %2.2f %% \n", mean_average_precision, mean_average_precision * 100);
+    }
+    else {
+        printf("\n average precision (AP) = %f, or %2.2f %% for IoU threshold = %f \n", mean_average_precision, mean_average_precision * 100, iou_thresh);
+    }
 
     for (i = 0; i < classes; ++i) {
         free(pr[i]);
