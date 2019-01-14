@@ -113,23 +113,93 @@ void forward_convolutional_layer_cpu(layer l, network_state state)
         //im2col_cpu_custom(state.input, l.c, l.h, l.w, l.size, l.stride, l.pad, b);    // AVX2
 
         // XNOR-net - bit-1: weights, input, calculation
-        if (l.xnor && (l.stride == 1 && l.pad == 1)) {
+        if (l.xnor && l.align_bit_weights && (l.stride == 1 && l.pad == 1))
+        {
             memset(b, 0, l.bit_align*l.size*l.size*l.c * sizeof(float));
+
+            if (l.c % 32 == 0)
+            {
+                //printf(" l.index = %d - new XNOR \n", l.index);
+
+                int ldb_align = l.lda_align;
+                size_t new_ldb = k + (ldb_align - k%ldb_align); // (k / 8 + 1) * 8;
+                size_t t_intput_size = new_ldb * l.bit_align;// n;
+                size_t t_bit_input_size = t_intput_size / 8;// +1;
+
+                const int new_c = l.c / 32;
+
+                float *re_packed_input = calloc(l.c * l.w * l.h, sizeof(float));
+                uint32_t *bin_re_packed_input = calloc(new_c * l.w * l.h + 1, sizeof(uint32_t));
+
+                // float32x4 by channel (as in cuDNN)
+                repack_input(state.input, re_packed_input, l.w, l.h, l.c);
+
+                // 32 x floats -> 1 x uint32_t
+                float_to_bit(re_packed_input, (char *)bin_re_packed_input, l.c * l.w * l.h);
+
+                free(re_packed_input);
+
+                // slow - convolution the packed inputs and weights: float x 32 by channel (as in cuDNN)
+                //convolution_repacked((uint32_t *)bin_re_packed_input, (uint32_t *)l.align_bit_weights, l.output,
+                //    l.w, l.h, l.c, l.n, l.size, l.pad, l.new_lda, l.mean_arr);
+
+                // // then exit from if()
+
+
+                im2col_cpu_custom((float *)bin_re_packed_input, new_c, l.h, l.w, l.size, l.stride, l.pad, b);
+                //im2col_cpu((float *)bin_re_packed_input, new_c, l.h, l.w, l.size, l.stride, l.pad, b);
+
+                free(bin_re_packed_input);
+
+                int new_k = l.size*l.size*l.c / 32;
+
+                // good for (l.c == 64)
+                //gemm_nn_bin_32bit_packed(m, n, new_k, 1,
+                //    l.align_bit_weights, l.new_lda/32,
+                //    b, n,
+                //    c, n, l.mean_arr);
+
+                // // then exit from if()
+
+
+                //size_t new_ldb = k + (ldb_align - k%ldb_align); // (k / 8 + 1) * 8;
+                //size_t t_intput_size = new_ldb * l.bit_align;// n;
+                //size_t t_bit_input_size = t_intput_size / 8;// +1;
+
+                char *t_bit_input = calloc(t_bit_input_size, sizeof(char));
+
+                transpose_uint32((uint32_t *)b, t_bit_input, new_k, n, n, new_ldb);
+
+                // the main GEMM function
+                gemm_nn_custom_bin_mean_transposed(m, n, k, 1, l.align_bit_weights, new_ldb, t_bit_input, new_ldb, c, n, l.mean_arr);
+
+                // // alternative GEMM
+                //gemm_nn_bin_transposed_32bit_packed(m, n, new_k, 1,
+                //    l.align_bit_weights, l.new_lda/32,
+                //    t_bit_input, new_ldb / 32,
+                //    c, n, l.mean_arr);
+
+                free(t_bit_input);
+
+            }
+            else { // else (l.c % 32 != 0)
+
             //im2col_cpu_custom_align(state.input, l.c, l.h, l.w, l.size, l.stride, l.pad, b, l.bit_align);
-            im2col_cpu_custom_bin(state.input, l.c, l.h, l.w, l.size, l.stride, l.pad, b, l.bit_align);
+                im2col_cpu_custom_bin(state.input, l.c, l.h, l.w, l.size, l.stride, l.pad, b, l.bit_align);
 
-            int ldb_align = l.lda_align;
-            size_t new_ldb = k + (ldb_align - k%ldb_align);
-            char *t_bit_input = NULL;
-            size_t t_intput_size = binary_transpose_align_input(k, n, b, &t_bit_input, ldb_align, l.bit_align);
+                int ldb_align = l.lda_align;
+                size_t new_ldb = k + (ldb_align - k%ldb_align);
+                char *t_bit_input = NULL;
+                size_t t_intput_size = binary_transpose_align_input(k, n, b, &t_bit_input, ldb_align, l.bit_align);
 
-            // 5x times faster than gemm()-float32
-            gemm_nn_custom_bin_mean_transposed(m, n, k, 1, l.align_bit_weights, new_ldb, t_bit_input, new_ldb, c, n, l.mean_arr);
+                // 5x times faster than gemm()-float32
+                gemm_nn_custom_bin_mean_transposed(m, n, k, 1, l.align_bit_weights, new_ldb, t_bit_input, new_ldb, c, n, l.mean_arr);
 
-            //gemm_nn_custom_bin_mean_transposed(m, n, k, 1, bit_weights, k, t_bit_input, new_ldb, c, n, mean_arr);
+                //gemm_nn_custom_bin_mean_transposed(m, n, k, 1, bit_weights, k, t_bit_input, new_ldb, c, n, mean_arr);
 
-            //free(t_input);
-            free(t_bit_input);
+                //free(t_input);
+                free(t_bit_input);
+            }
         }
         else {
             im2col_cpu_custom(state.input, l.c, l.h, l.w, l.size, l.stride, l.pad, b);    // AVX2

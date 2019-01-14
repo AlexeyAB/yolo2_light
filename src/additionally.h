@@ -237,6 +237,29 @@ extern "C" {
     void transpose_bin(uint32_t *A, uint32_t *B, const int n, const int m,
         const int lda, const int ldb, const int block_size);
 
+    // 32 channels -> 1 channel (with 32 floats)
+    // 256 channels -> 8 channels (with 32 floats)
+    void repack_input(float *input, float *re_packed_input, int w, int h, int c);
+
+    // transpose uint32_t matrix
+    void transpose_uint32(uint32_t *src, uint32_t *dst, int src_h, int src_w, int src_align, int dst_align);
+
+    // convolution repacked bit matrix (32 channels -> 1 uint32_t) XNOR-net
+    void convolution_repacked(uint32_t *packed_input, uint32_t *packed_weights, float *output,
+        int w, int h, int c, int n, int size, int pad, int new_lda, float *mean_arr);
+
+    // AVX2
+    void gemm_nn_bin_32bit_packed(int M, int N, int K, float ALPHA,
+        uint32_t *A, int lda,
+        uint32_t *B, int ldb,
+        float *C, int ldc, float *mean_arr);
+
+    // AVX2
+    void gemm_nn_bin_transposed_32bit_packed(int M, int N, int K, float ALPHA,
+        uint32_t *A, int lda,
+        uint32_t *B, int ldb,
+        float *C, int ldc, float *mean_arr);
+
     // AVX2
     void im2col_cpu_custom(float* data_im,
         int channels, int height, int width,
