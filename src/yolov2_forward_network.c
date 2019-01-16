@@ -240,12 +240,15 @@ void forward_convolutional_layer_cpu(layer l, network_state state)
 
     // 3. Add BIAS
     //if (l.batch_normalize)
-    for (int b=0; b<l.batch; b++) {
-	    for (i = 0; i < l.n; ++i) {
-		    for (j = 0; j < out_size; ++j) {
-			    l.output[i*out_size + j+b*l.outputs] += l.biases[i];
-		    }
-	    }
+    {
+        int b;
+        for (b = 0; b < l.batch; b++) {
+            for (i = 0; i < l.n; ++i) {
+                for (j = 0; j < out_size; ++j) {
+                    l.output[i*out_size + j + b*l.outputs] += l.biases[i];
+                }
+            }
+        }
     }
 
     // 4. Activation function (LEAKY or LINEAR)
