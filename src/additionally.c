@@ -71,7 +71,7 @@ void yolov2_fuse_conv_batchnorm(network net)
         layer *l = &net.layers[j];
 
         if (l->type == CONVOLUTIONAL) {
-            printf(" Fuse Convolutional layer \t\t l->size = %d  \n", l->size);
+            printf(stderr, " Fuse Convolutional layer \t\t l->size = %d  \n", l->size);
 
             if (l->batch_normalize) {
                 int f;
@@ -103,7 +103,7 @@ void yolov2_fuse_conv_batchnorm(network net)
             }
         }
         else {
-            printf(" Skip layer: %d \n", l->type);
+            printf(stderr, " Skip layer: %d \n", l->type);
         }
     }
 }
