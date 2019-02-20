@@ -19,6 +19,9 @@ ARCH= -gencode arch=compute_30,code=sm_30 \
       -gencode arch=compute_52,code=[sm_52,compute_52] \
       -gencode arch=compute_61,code=[sm_61,compute_61]
 
+# GeForce RTX 2080 Ti, RTX 2080, RTX 2070, Quadro RTX 8000, Quadro RTX 6000, Quadro RTX 5000, Tesla T4, XNOR Tensor Cores
+# ARCH= -gencode arch=compute_75,code=[sm_75,compute_75]
+
 # Tesla V100
 # ARCH= -gencode arch=compute_70,code=[sm_70,compute_70]
 
@@ -48,7 +51,7 @@ COMMON=
 CFLAGS=-Wall -Wfatal-errors
 
 ifeq ($(DEBUG), 1) 
-OPTS=-O0 -g
+OPTS= -Og -g
 endif
 
 ifeq ($(AVX), 1) 

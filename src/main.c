@@ -198,7 +198,7 @@ void test_detector_cpu(char **names, char *cfgfile, char *weightfile, char *file
         //network_predict(net, X);
 #ifdef GPU
         if (quantized) {
-            network_predict_gpu_cudnn_quantized(net, X);    // quantized works only with Yolo v2
+            network_predict_gpu_cudnn_quantized(net, X);    // quantized
                                                             //nms = 0.2;
         }
         else {
@@ -209,7 +209,7 @@ void test_detector_cpu(char **names, char *cfgfile, char *weightfile, char *file
         network_predict_opencl(net, X);
 #else
         if (quantized) {
-            network_predict_quantized(net, X);    // quantized works only with Yolo v2
+            network_predict_quantized(net, X);    // quantized
             nms = 0.2;
         }
         else {
@@ -393,7 +393,7 @@ static void *detect_in_thread(void *ptr)
     //float *prediction = network_predict(net, X);
 #ifdef GPU
     if (demo_quantized) {
-        network_predict_gpu_cudnn_quantized(net, X);    // quantized works only with Yolo v2
+        network_predict_gpu_cudnn_quantized(net, X);    // quantized
                                                         //nms = 0.2;
     }
     else {
@@ -404,7 +404,7 @@ static void *detect_in_thread(void *ptr)
     network_predict_opencl(net, X);
 #else
     if (demo_quantized) {
-        network_predict_quantized(net, X);    // quantized works only with Yolo v2
+        network_predict_quantized(net, X);    // quantized
         nms = 0.2;
     }
     else {

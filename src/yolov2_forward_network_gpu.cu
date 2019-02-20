@@ -25,58 +25,71 @@ void forward_convolutional_layer_gpu_cudnn(layer l, network_state state)
     // XNOR-net
     if (l.xnor) {
 
-        if (l.align_bit_weights_gpu && l.c >= 256 && l.size > 1)
+        if (l.align_bit_weights_gpu && l.c >= 32)
         {
-            cudaError_t status = cudaSuccess;
-            int input_size = l.c*l.h*l.w*l.batch;
+                //return;
+                cudaError_t status = cudaSuccess;
+                int input_size = l.c*l.h*l.w*l.batch;
 
-            int m = l.n;
-            int k = l.size*l.size*l.c;
-            int n = l.out_w*l.out_h;
-            //float * a = l.binary_weights_gpu;
+                int m = l.n;
+                int k = l.size*l.size*l.c;
+                int n = l.out_w*l.out_h;
+                //float * a = l.weights_gpu;
 
-            int ldb_align = l.lda_align;
-            size_t new_ldb = k + (ldb_align - k%ldb_align); // (k / 8 + 1) * 8;
-            size_t t_intput_size = new_ldb * n;
-            size_t t_bit_input_size = t_intput_size / 8;// +1;
+                int ldb_align = l.lda_align;
+                size_t new_ldb = k + (ldb_align - k%ldb_align); // (k / 8 + 1) * 8;
+                size_t t_intput_size = new_ldb * n;
+                size_t t_bit_input_size = t_intput_size / 8;// +1;
 
-            {
-                int i = 0;
-                if (l.stride == 1 && l.c >= 256 && l.w >= 13 && l.size > 1 && 0)    // disable
+                if (l.c % 32 == 0)
                 {
-                    // stride=1 only
-                    im2col_align_bin_ongpu(state.input + i*l.c*l.h*l.w, l.c, l.h, l.w, l.size, l.stride, l.pad, state.workspace, l.bit_align);
-                    //cudaDeviceSynchronize();
+                    //printf("\n\n l.index = %d, l.w = %d, l.c = %d, l.n = %d, l.stride = %d, l.pad = %d - new XNOR \n", l.index, l.w, l.c, l.n, l.stride, l.pad);
+                    //printf("l.align_workspace_size = %d, (l.c * l.w * l.h)  = %d \n", l.align_workspace_size, (l.c * l.w * l.h));
+
+                    int ldb_align = l.lda_align;
+                    size_t new_ldb = k + (ldb_align - k%ldb_align); // (k / 8 + 1) * 8;
+                    size_t t_intput_size = new_ldb * l.bit_align;// n;
+                    size_t t_bit_input_size = t_intput_size / 8;// +1;
+
+                    const int new_c = l.c / 32;
+
+                    repack_input_gpu_bin(state.input, (uint32_t *)l.align_workspace_gpu, l.w, l.h, l.c);
+
+                    im2col_ongpu(l.align_workspace_gpu, new_c, l.h, l.w, l.size, l.stride, l.pad, state.workspace);
+
+                    int new_k = l.size*l.size*l.c / 32;
+
+                    transpose_uint32_gpu((uint32_t *)state.workspace, (uint32_t *)l.transposed_align_workspace_gpu, new_k, n, n, new_ldb);
+
+                    gemm_nn_custom_bin_mean_transposed_gpu(m, n, k,
+                        (unsigned char *)l.align_bit_weights_gpu, new_ldb, (unsigned char *)l.transposed_align_workspace_gpu,
+                        new_ldb, l.output_gpu, n, l.mean_arr_gpu, l.biases_gpu, l.activation == LEAKY,
+                        l.bin_conv_shortcut_in_gpu, l.bin_conv_shortcut_out_gpu);
+
                 }
                 else
                 {
-                    im2col_align_ongpu(state.input + i*l.c*l.h*l.w, l.c, l.h, l.w, l.size, l.stride, l.pad, l.align_workspace_gpu, l.bit_align);
-                    //cudaDeviceSynchronize();
+                    //printf("\n\n l.index = %d, l.w = %d, l.c = %d, l.n = %d, l.stride = %d, l.pad = %d - old XNOR \n", l.index, l.w, l.c, l.n, l.stride, l.pad);
 
-                    // should be optimized
+                    int i = 0;
+
+                    im2col_align_ongpu(state.input + i*l.c*l.h*l.w, l.c, l.h, l.w, l.size, l.stride, l.pad, l.align_workspace_gpu, l.bit_align);
+
                     float_to_bit_gpu(l.align_workspace_gpu, (unsigned char *)state.workspace, l.align_workspace_size);
-                    //cudaDeviceSynchronize();
+
+                    transpose_bin_gpu((unsigned char *)state.workspace, (unsigned char *)l.transposed_align_workspace_gpu, k, n, l.bit_align, new_ldb, 8);
+
+                    gemm_nn_custom_bin_mean_transposed_gpu(m, n, k,
+                        (unsigned char *)l.align_bit_weights_gpu, new_ldb, (unsigned char *)l.transposed_align_workspace_gpu,
+                        new_ldb, l.output_gpu, n, l.mean_arr_gpu, l.biases_gpu, l.activation == LEAKY,
+                        l.bin_conv_shortcut_in_gpu, l.bin_conv_shortcut_out_gpu);
+
                 }
 
-                transpose_bin_gpu((unsigned char *)state.workspace, (unsigned char *)l.transposed_align_workspace_gpu, k, n, l.bit_align, new_ldb, 8);
-                //cudaDeviceSynchronize();
-
-                // should be optimized
-                gemm_nn_custom_bin_mean_transposed_gpu(m, n, k,
-                    (unsigned char *)l.align_bit_weights_gpu, new_ldb, (unsigned char *)l.transposed_align_workspace_gpu, new_ldb, l.output_gpu, n, l.mean_arr_gpu, l.biases_gpu);
-
-                //gemm_nn_custom_bin_mean_transposed_sequentially_gpu(m, n, k,
-                //    (unsigned char *)l.align_bit_weights_gpu, new_ldb, (unsigned char *)l.transposed_align_workspace_gpu, new_ldb, l.output_gpu, n, l.mean_arr_gpu);
-
-                //cudaDeviceSynchronize();
-                //check_error(status);
+                //add_bias_gpu(l.output_gpu, l.biases_gpu, l.batch, l.n, l.out_w*l.out_h);
+                if (l.activation != LINEAR && l.activation != LEAKY) activate_array_ongpu(l.output_gpu, l.outputs*l.batch, l.activation);
+                return;
             }
-
-            //add_bias_gpu(l.output_gpu, l.biases_gpu, l.batch, l.n, l.out_w*l.out_h);
-            if (l.activation != LINEAR) activate_array_ongpu(l.output_gpu, l.outputs*l.batch, l.activation);
-            //cudaDeviceSynchronize();
-            return;
-        }
 
         if (!l.align_bit_weights_gpu) {
             binarize_weights_gpu(l.weights_gpu, l.n, l.c*l.size*l.size, l.binary_weights_gpu);
@@ -353,8 +366,10 @@ void forward_upsample_layer_cuda(const layer l, network_state state)
 // shortcut_layer.c
 void forward_shortcut_layer_cuda(const layer l, network_state state)
 {
-    copy_ongpu(l.outputs*l.batch, state.input, 1, l.output_gpu, 1);
-    shortcut_gpu(l.batch, l.w, l.h, l.c, state.net.layers[l.index].output_gpu, l.out_w, l.out_h, l.out_c, l.output_gpu);
+    //copy_ongpu(l.outputs*l.batch, state.input, 1, l.output_gpu, 1);
+    //shortcut_gpu(l.batch, l.w, l.h, l.c, state.net.layers[l.index].output_gpu, l.out_w, l.out_h, l.out_c, l.output_gpu);
+    //activate_array_ongpu(l.output_gpu, l.outputs*l.batch, l.activation);
+    input_shortcut_gpu(state.input, l.batch, l.w, l.h, l.c, state.net.layers[l.index].output_gpu, l.out_w, l.out_h, l.out_c, l.output_gpu);
     activate_array_ongpu(l.output_gpu, l.outputs*l.batch, l.activation);
 }
 
@@ -465,6 +480,9 @@ void forward_network_gpu_cudnn(network net, network_state state)
             forward_region_layer_gpu_cuda(l, state);
             //printf("\n REGION \n");
         }
+        else if (l.type == BLANK) {
+            //printf("\n layer: BLANK - %d \n", i);
+        }
         else {
             printf("\n layer: %d \n", l.type);
         }
@@ -536,7 +554,8 @@ float *network_predict_gpu_cudnn(network net, float *input)
     state.net = net;
     //status = cudaMalloc((void **)&(state.input), sizeof(float)*size);
     state.input = net.input_state_gpu;
-    status = cudaMemcpy(state.input, input, sizeof(float)*size, cudaMemcpyHostToDevice);
+    memcpy(net.input_pinned_cpu, input, size * sizeof(float));
+    status = cudaMemcpy(state.input, net.input_pinned_cpu, sizeof(float)*size, cudaMemcpyHostToDevice);
     state.truth = 0;
     state.train = 0;
     state.delta = 0;
@@ -563,7 +582,8 @@ float *network_predict_gpu_cudnn_quantized(network net, float *input)
     state.index = 0;
     state.net = net;
     status = cudaMalloc((void **)&(state.input), sizeof(float)*size);
-    status = cudaMemcpy(state.input, input, sizeof(float)*size, cudaMemcpyHostToDevice);
+    memcpy(net.input_pinned_cpu, input, size * sizeof(float));
+    status = cudaMemcpy(state.input, net.input_pinned_cpu, sizeof(float)*size, cudaMemcpyHostToDevice);
     state.truth = 0;
     state.train = 0;
     state.delta = 0;

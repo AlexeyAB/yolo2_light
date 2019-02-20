@@ -71,7 +71,7 @@ void yolov2_fuse_conv_batchnorm(network net)
         layer *l = &net.layers[j];
 
         if (l->type == CONVOLUTIONAL) {
-            printf(" Fuse Convolutional layer \t\t l->size = %d  \n", l->size);
+            //printf(" Fuse Convolutional layer \t\t l->size = %d  \n", l->size);
 
             if (l->batch_normalize) {
                 int f;
@@ -103,7 +103,7 @@ void yolov2_fuse_conv_batchnorm(network net)
             }
         }
         else {
-            printf(" Skip layer: %d \n", l->type);
+            //printf(" Skip layer: %d \n", l->type);
         }
     }
 }
@@ -216,8 +216,9 @@ void binary_align_weights(convolutional_layer *l)
     }
 
 
-    //if (l->c % 32 == 0)
-    if (gpu_index < 0 && l->stride == 1 && l->pad == 1 && l->c % 32 == 0)
+    if (l->c % 32 == 0)
+        //if(gpu_index < 0 && l->stride == 1 && l->pad == 1 && l->c % 32 == 0)
+        //if (l->stride == 1 && l->pad == 1 && l->c % 32 == 0)
     {
         int fil, chan;
         const int items_per_filter = l->c * l->size * l->size;
@@ -249,6 +250,18 @@ void binary_align_weights(convolutional_layer *l)
 
         float_to_bit(align_weights, l->align_bit_weights, align_weights_size);
 
+        //if (l->n >= 32)
+        if (gpu_index >= 0)
+        {
+            int M = l->n;
+            int N = l->out_w*l->out_h;
+            //printf("\n M = %d, N = %d, M %% 8 = %d, N %% 8 = %d - weights \n", M, N, M % 8, N % 8);
+            //printf("\n l.w = %d, l.c = %d, l.n = %d \n", l->w, l->c, l->n);
+            for (i = 0; i < align_weights_size / 8; ++i) l->align_bit_weights[i] = ~(l->align_bit_weights[i]);
+        }
+
+
+
         get_mean_array(l->binary_weights, m*k, l->n, l->mean_arr);
         //get_mean_array(l->binary_weights, m*new_lda, l->n, l->mean_arr);
     }
@@ -257,32 +270,38 @@ void binary_align_weights(convolutional_layer *l)
 
         get_mean_array(l->binary_weights, m*k, l->n, l->mean_arr);
     }
+
     //l->mean_arr = calloc(l->n, sizeof(float));
 
     //get_mean_array(align_weights, align_weights_size, l->n, l->mean_arr);
+
+
+
 
 #ifdef GPU
     cudaError_t status;
     l->align_workspace_size = l->bit_align * l->size * l->size * l->c;
     status = cudaMalloc((void **)&l->align_workspace_gpu, l->align_workspace_size * sizeof(float));
     status = cudaMalloc((void **)&l->transposed_align_workspace_gpu, l->align_workspace_size * sizeof(float));
-    check_error(status);
+    CHECK_CUDA(status);
 
     //l->align_bit_weights_gpu = cuda_make_array(l->align_bit_weights, l->align_bit_weights_size * sizeof(char)/sizeof(float));
     status = cudaMalloc((void **)&l->align_bit_weights_gpu, l->align_bit_weights_size);
-    check_error(status);
+    CHECK_CUDA(status);
     status = cudaMemcpy(l->align_bit_weights_gpu, l->align_bit_weights, l->align_bit_weights_size, cudaMemcpyHostToDevice);
-    check_error(status);
+    CHECK_CUDA(status);
     status = cudaMemcpy(l->binary_weights_gpu, l->binary_weights, m*k * sizeof(float), cudaMemcpyHostToDevice);
-    check_error(status);
+    CHECK_CUDA(status);
 
     //l->mean_arr_gpu = cuda_make_array(l->mean_arr, l->n);
     cuda_push_array(l->mean_arr_gpu, l->mean_arr, l->n);
-    cudaDeviceSynchronize();
+    CHECK_CUDA(cudaDeviceSynchronize());
 #endif // GPU
 
     free(align_weights);
 }
+
+void forward_blank_layer(layer l, network_state state) {}
 
 void calculate_binary_weights(network net)
 {
@@ -295,13 +314,29 @@ void calculate_binary_weights(network net)
 
             if (l->xnor) {
                 //printf("\n %d \n", j);
-                l->lda_align = 256; // 256bit for AVX2
+                //l->lda_align = 256; // 256bit for AVX2    // set in make_convolutional_layer()
+                //if (l->size*l->size*l->c >= 2048) l->lda_align = 512;
 
                 binary_align_weights(l);
 
                 if (net.layers[j].use_bin_output) {
-                    l->activation = LINEAR;
+                    //l->activation = LINEAR;
                 }
+
+#ifdef GPU
+                // fuse conv_xnor + shortcut -> conv_xnor
+                if ((j + 1) < net.n && net.layers[j].type == CONVOLUTIONAL) {
+                    layer *sc = &net.layers[j + 1];
+                    if (sc->type == SHORTCUT && sc->w == sc->out_w && sc->h == sc->out_h && sc->c == sc->out_c)
+                    {
+                        l->bin_conv_shortcut_in_gpu = net.layers[net.layers[j + 1].index].output_gpu;
+                        l->bin_conv_shortcut_out_gpu = net.layers[j + 1].output_gpu;
+
+                        net.layers[j + 1].type = BLANK;
+                        net.layers[j + 1].forward_gpu = forward_blank_layer;
+                    }
+                }
+#endif  // GPU
             }
         }
     }
@@ -2032,6 +2067,10 @@ void free_network(network net)
     if (gpu_index >= 0) cuda_free(net.workspace);
     else free(net.workspace);
     if (net.input_state_gpu) cuda_free(net.input_state_gpu);
+    if (net.input_pinned_cpu) {   // CPU
+        if (net.input_pinned_cpu_flag) cudaFreeHost(net.input_pinned_cpu);
+        else free(net.input_pinned_cpu);
+    }
     if (*net.input_gpu) cuda_free(*net.input_gpu);
     if (*net.truth_gpu) cuda_free(*net.truth_gpu);
     if (net.input_gpu) free(net.input_gpu);
@@ -2167,6 +2206,12 @@ void free_layer(layer l)
     if (l.mean_arr)           free(l.mean_arr);
     //if (l.weight_updates)     free(l.weight_updates);
     //if (l.delta)              free(l.delta);
+#ifdef GPU
+    if (l.output && l.output_pinned) {
+        cudaFreeHost(l.output);
+        l.output = NULL;
+    }
+#endif
     if (l.output)             free(l.output);
     if (l.squared)            free(l.squared);
     if (l.norms)              free(l.norms);
@@ -2474,6 +2519,13 @@ layer make_yolo_layer(int batch, int w, int h, int n, int total, int *mask, int 
 
 #ifdef GPU
     l.output_gpu = cuda_make_array(l.output, batch*l.outputs);
+
+    free(l.output);
+    if (cudaSuccess == cudaHostAlloc(&l.output, batch*l.outputs * sizeof(float), cudaHostRegisterMapped)) l.output_pinned = 1;
+    else {
+        cudaGetLastError(); // reset CUDA-error
+        l.output = calloc(batch*l.outputs, sizeof(float));
+    }
 #endif
 
     fprintf(stderr, "yolo\n");
@@ -2635,7 +2687,12 @@ size_t get_workspace_size(layer l) {
         return most;
     }
 #endif
-    if (l.xnor) return (size_t)l.bit_align*l.size*l.size*l.c * sizeof(float);
+    if (l.xnor) {
+        size_t re_packed_input_size = l.c * l.w * l.h * sizeof(float);
+        size_t workspace_size = (size_t)l.bit_align*l.size*l.size*l.c * sizeof(float);
+        if (workspace_size < re_packed_input_size) workspace_size = re_packed_input_size;
+        return workspace_size;
+    }
     return (size_t)l.out_h*l.out_w*l.size*l.size*l.c * sizeof(float);
 }
 
@@ -2712,6 +2769,16 @@ convolutional_layer make_convolutional_layer(int batch, int h, int w, int c, int
         l.bit_align = src_align + (align - src_align % align);
 
         l.mean_arr = calloc(l.n, sizeof(float));
+
+        const size_t new_c = l.c / 32;
+        size_t in_re_packed_input_size = new_c * l.w * l.h + 1;
+        l.bin_re_packed_input = calloc(in_re_packed_input_size, sizeof(uint32_t));
+
+        l.lda_align = 256;  // AVX2
+        int k = l.size*l.size*l.c;
+        size_t k_aligned = k + (l.lda_align - k%l.lda_align);
+        size_t t_bit_input_size = k_aligned * l.bit_align / 8;
+        l.t_bit_input = calloc(t_bit_input_size, sizeof(char));
     }
 
     if (batch_normalize) {
@@ -3980,6 +4047,12 @@ network parse_network_cfg(char *filename, int batch, int quantized)
             net.workspace = cuda_make_array(0, (workspace_size - 1) / sizeof(float) + 1);
             int size = net.layers[0].inputs * net.batch;    //get_network_input_size(net) * net.batch;
             net.input_state_gpu = cuda_make_array(0, size);
+
+            if (cudaSuccess == cudaHostAlloc(&net.input_pinned_cpu, size * sizeof(float), cudaHostRegisterMapped)) net.input_pinned_cpu_flag = 1;
+            else {
+                cudaGetLastError(); // reset CUDA-error
+                net.input_pinned_cpu = calloc(size, sizeof(float));
+            }
         }
         else {
             net.workspace = calloc(1, workspace_size);
