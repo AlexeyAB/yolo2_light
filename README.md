@@ -23,7 +23,7 @@ How to use **INT8**-inference:
 * For the custom dataset, you should use `input_calibration=` parameter in your cfg-file, from the correspon cfg-file: [`yolov3-tiny.cfg`](https://github.com/AlexeyAB/yolo2_light/blob/29905072f194ee86fdeed6ff2d12fed818712411/bin/yolov3-tiny.cfg#L25) or [`yolov3.cfg`](https://github.com/AlexeyAB/yolo2_light/blob/29905072f194ee86fdeed6ff2d12fed818712411/bin/yolov3.cfg#L25), ...
 
 How to use **BIT1-XNOR**-inference - only for custom models (you should train it by yourself):
-* You should base your cfg-file on [`yolov3-spp_xnor_obj.cfg`](https://github.com/AlexeyAB/darknet/files/2853459/yolov3-spp_xnor_obj.cfg.txt) and train it by using this repository as usual https://github.com/AlexeyAB/darknet by using pre-trained file [`darknet53_xnor.conv.74`](https://drive.google.com/file/d/1d4CkgR--7bEEN0kWy-osR3kjLVFDIrnl/view?usp=sharing)
+* You should base your cfg-file on [`yolov3-spp_xnor_obj.cfg`](https://github.com/AlexeyAB/darknet/files/2853459/yolov3-spp_xnor_obj.cfg.txt) and train it by using this repository as usual https://github.com/AlexeyAB/darknet by using pre-trained file [`darknet53_448_xnor.conv.74`](https://drive.google.com/open?id=1IT-vvyxRLlxY5g9rJp_G2U3TXYphjBv8)
 * Then use it for Detection-test or for getting Accuracy (mAP):
     * `./darknet detector test data/obj.names yolov3-spp_xnor_obj.cfg data/yolov3-spp_xnor_obj_5000.weights -thresh 0.15 dog.jpg`
 	* `./darknet detector map data/obj.data yolov3-spp_xnor_obj.cfg data/yolov3-spp_xnor_obj_5000.weights -thresh 0.15`
