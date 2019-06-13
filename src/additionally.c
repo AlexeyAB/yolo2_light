@@ -71,7 +71,7 @@ void yolov2_fuse_conv_batchnorm(network net)
         layer *l = &net.layers[j];
 
         if (l->type == CONVOLUTIONAL) {
-            printf(" Fuse Convolutional layer \t\t l->size = %d  \n", l->size);
+            //printf(" Fuse Convolutional layer \t\t l->size = %d  \n", l->size);
 
             if (l->batch_normalize) {
                 int f;
@@ -103,7 +103,7 @@ void yolov2_fuse_conv_batchnorm(network net)
             }
         }
         else {
-            printf(" Skip layer: %d \n", l->type);
+            //printf(" Skip layer: %d \n", l->type);
         }
     }
 }
@@ -214,32 +214,94 @@ void binary_align_weights(convolutional_layer *l)
             align_weights[i*new_lda + j] = l->binary_weights[i*k + j];
         }
     }
-    float_to_bit(align_weights, l->align_bit_weights, align_weights_size);
 
-    l->mean_arr = calloc(l->n, sizeof(float));
-    get_mean_array(align_weights, align_weights_size, l->n, l->mean_arr);
+
+    if (l->c % 32 == 0)
+        //if(gpu_index < 0 && l->stride == 1 && l->pad == 1 && l->c % 32 == 0)
+        //if (l->stride == 1 && l->pad == 1 && l->c % 32 == 0)
+    {
+        int fil, chan;
+        const int items_per_filter = l->c * l->size * l->size;
+        //const int dst_items_per_filter = new_lda;
+        for (fil = 0; fil < l->n; ++fil)
+        {
+            for (chan = 0; chan < l->c; chan += 32)
+            {
+                const int items_per_channel = l->size*l->size;
+                for (i = 0; i < items_per_channel; ++i)
+                {
+                    uint32_t val = 0;
+                    int c_pack;
+                    for (c_pack = 0; c_pack < 32; ++c_pack) {
+                        float src = l->binary_weights[fil*items_per_filter + (chan + c_pack)*items_per_channel + i];
+
+                        //align_weights[fil*items_per_filter + chan*items_per_channel + i * 32 + c_pack] = src;
+
+                        align_weights[fil*new_lda + chan*items_per_channel + i * 32 + c_pack] = src;
+                        //val |= (src << c);
+                    }
+
+                }
+            }
+        }
+
+        //printf("\n l.index = %d \t aw[0] = %f, aw[1] = %f, aw[2] = %f, aw[3] = %f \n", l->index, align_weights[0], align_weights[1], align_weights[2], align_weights[3]);
+        //memcpy(l->binary_weights, align_weights, (l->size * l->size * l->c * l->n) * sizeof(float));
+
+        float_to_bit(align_weights, l->align_bit_weights, align_weights_size);
+
+        //if (l->n >= 32)
+        if (gpu_index >= 0)
+        {
+            int M = l->n;
+            int N = l->out_w*l->out_h;
+            //printf("\n M = %d, N = %d, M %% 8 = %d, N %% 8 = %d - weights \n", M, N, M % 8, N % 8);
+            //printf("\n l.w = %d, l.c = %d, l.n = %d \n", l->w, l->c, l->n);
+            for (i = 0; i < align_weights_size / 8; ++i) l->align_bit_weights[i] = ~(l->align_bit_weights[i]);
+        }
+
+
+
+        get_mean_array(l->binary_weights, m*k, l->n, l->mean_arr);
+        //get_mean_array(l->binary_weights, m*new_lda, l->n, l->mean_arr);
+    }
+    else {
+        float_to_bit(align_weights, l->align_bit_weights, align_weights_size);
+
+        get_mean_array(l->binary_weights, m*k, l->n, l->mean_arr);
+    }
+
+    //l->mean_arr = calloc(l->n, sizeof(float));
+
+    //get_mean_array(align_weights, align_weights_size, l->n, l->mean_arr);
+
+
+
 
 #ifdef GPU
     cudaError_t status;
     l->align_workspace_size = l->bit_align * l->size * l->size * l->c;
     status = cudaMalloc((void **)&l->align_workspace_gpu, l->align_workspace_size * sizeof(float));
     status = cudaMalloc((void **)&l->transposed_align_workspace_gpu, l->align_workspace_size * sizeof(float));
-    check_error(status);
+    CHECK_CUDA(status);
 
     //l->align_bit_weights_gpu = cuda_make_array(l->align_bit_weights, l->align_bit_weights_size * sizeof(char)/sizeof(float));
     status = cudaMalloc((void **)&l->align_bit_weights_gpu, l->align_bit_weights_size);
-    check_error(status);
+    CHECK_CUDA(status);
     status = cudaMemcpy(l->align_bit_weights_gpu, l->align_bit_weights, l->align_bit_weights_size, cudaMemcpyHostToDevice);
-    check_error(status);
+    CHECK_CUDA(status);
     status = cudaMemcpy(l->binary_weights_gpu, l->binary_weights, m*k * sizeof(float), cudaMemcpyHostToDevice);
-    check_error(status);
+    CHECK_CUDA(status);
 
-    l->mean_arr_gpu = cuda_make_array(l->mean_arr, l->n);
-    cudaDeviceSynchronize();
+    //l->mean_arr_gpu = cuda_make_array(l->mean_arr, l->n);
+    cuda_push_array(l->mean_arr_gpu, l->mean_arr, l->n);
+    CHECK_CUDA(cudaDeviceSynchronize());
 #endif // GPU
 
     free(align_weights);
 }
+
+void forward_blank_layer(layer l, network_state state) {}
 
 void calculate_binary_weights(network net)
 {
@@ -252,13 +314,29 @@ void calculate_binary_weights(network net)
 
             if (l->xnor) {
                 //printf("\n %d \n", j);
-                l->lda_align = 256; // 256bit for AVX2
+                //l->lda_align = 256; // 256bit for AVX2    // set in make_convolutional_layer()
+                //if (l->size*l->size*l->c >= 2048) l->lda_align = 512;
 
                 binary_align_weights(l);
 
                 if (net.layers[j].use_bin_output) {
-                    l->activation = LINEAR;
+                    //l->activation = LINEAR;
                 }
+
+#ifdef GPU
+                // fuse conv_xnor + shortcut -> conv_xnor
+                if ((j + 1) < net.n && net.layers[j].type == CONVOLUTIONAL) {
+                    layer *sc = &net.layers[j + 1];
+                    if (sc->type == SHORTCUT && sc->w == sc->out_w && sc->h == sc->out_h && sc->c == sc->out_c)
+                    {
+                        l->bin_conv_shortcut_in_gpu = net.layers[net.layers[j + 1].index].output_gpu;
+                        l->bin_conv_shortcut_out_gpu = net.layers[j + 1].output_gpu;
+
+                        net.layers[j + 1].type = BLANK;
+                        net.layers[j + 1].forward_gpu = forward_blank_layer;
+                    }
+                }
+#endif  // GPU
             }
         }
     }
@@ -432,6 +510,148 @@ void transpose_bin(uint32_t *A, uint32_t *B, const int n, const int m,
     }
 }
 
+// popcnt 32 bit
+static inline int popcnt_32(uint32_t val32) {
+#ifdef WIN32  // Windows MSVS
+    int tmp_count = __popcnt(val32);
+#else   // Linux GCC
+    int tmp_count = __builtin_popcount(val32);
+#endif
+    return tmp_count;
+}
+
+void gemm_nn_bin_transposed_32bit_packed(int M, int N, int K, float ALPHA,
+    uint32_t *A, int lda,
+    uint32_t *B, int ldb,
+    float *C, int ldc, float *mean_arr)
+{
+    int i;
+    #pragma omp parallel for
+    for (i = 0; i < M; ++i) {   // l.n
+        int j, s;
+        float mean_val = mean_arr[i];
+        for (j = 0; j < N; ++j) // out_h*out_w;
+        {
+            float val = 0;
+            for (s = 0; s < K; ++s) // l.size*l.size*l.c/32  or (l.size*l.size*l.c)
+            {
+                register uint32_t A_PART = ((uint32_t*)A)[i*lda + s];
+                register uint32_t B_PART = ((uint32_t*)B)[j*ldb + s];
+                uint32_t xnor_result = ~(A_PART ^ B_PART);
+                int32_t count = popcnt_32(xnor_result);  // must be Signed int
+
+                val += (2 * count - 32) * mean_val;
+            }
+            C[i*ldc + j] += val;
+        }
+    }
+}
+
+// 32 channels -> 1 channel (with 32 floats)
+// 256 channels -> 8 channels (with 32 floats)
+void repack_input(float *input, float *re_packed_input, int w, int h, int c)
+{
+    const int items_per_channel = w * h;
+    int chan, i;
+    for (chan = 0; chan < c; chan += 32)
+    {
+        for (i = 0; i < items_per_channel; ++i)
+        {
+            int c_pack;
+            for (c_pack = 0; c_pack < 32; ++c_pack) {
+                float src = input[(chan + c_pack)*items_per_channel + i];
+
+                re_packed_input[chan*items_per_channel + i * 32 + c_pack] = src;
+            }
+        }
+    }
+}
+
+// transpose uint32_t matrix
+void transpose_uint32(uint32_t *src, uint32_t *dst, int src_h, int src_w, int src_align, int dst_align)
+{
+    //l.bit_align - algined (n) by 32
+    //new_ldb - aligned (k) by 256
+
+    int i;
+    //#pragma omp parallel for
+    for (i = 0; i < src_h; i += 1)  // l.size*l.size*l.c;
+    {
+        int j;
+        for (j = 0; j < src_w; j += 1)  // out_h*out_w;
+        {
+            ((uint32_t *)dst)[j*dst_align / 32 + i] = ((uint32_t *)src)[i*src_align + j];
+        }
+    }
+}
+
+// convolution repacked bit matrix (32 channels -> 1 uint32_t) XNOR-net
+void convolution_repacked(uint32_t *packed_input, uint32_t *packed_weights, float *output,
+    int w, int h, int c, int n, int size, int pad, int new_lda, float *mean_arr)
+{
+    int fil;
+    // filter index
+    #pragma omp parallel for
+    for (fil = 0; fil < n; ++fil) {
+        float mean_val = mean_arr[fil];
+        int chan, c_pack, y, x, f_y, f_x;
+        // channel index
+        for (chan = 0; chan < c / 32; ++chan)
+            //for (chan = 0; chan < l.c; chan += 32)
+            //for (c_pack = 0; c_pack < 32; ++c_pack)
+            // input - y
+            for (y = 0; y < h; ++y)
+                // input - x
+                for (x = 0; x < w; ++x)
+                {
+                    int const output_index = fil*w*h + y*w + x;
+                    float sum = 0;
+
+                    // filter - y
+                    for (f_y = 0; f_y < size; ++f_y)
+                    {
+                        int input_y = y + f_y - pad;
+                        // filter - x
+                        for (f_x = 0; f_x < size; ++f_x)
+                        {
+                            int input_x = x + f_x - pad;
+                            if (input_y < 0 || input_x < 0 || input_y >= h || input_x >= w) continue;
+
+                            // normal
+                            //float input = state.input[(chan + c_pack)*l.w*l.h + input_y*l.w + input_x];
+                            //float weight = l.weights[fil*l.c*l.size*l.size + (chan + c_pack)*l.size*l.size + f_y*l.size + f_x];
+
+                            // packed
+                            //float input = re_packed_input[chan*l.w*l.h + (input_y*l.w + input_x) * 32 + c_pack];
+                            //float weight = l.weights[fil*l.c*l.size*l.size + chan*l.size*l.size + (f_y*l.size + f_x) * 32 + c_pack];
+                            //sum += input * weight;
+
+                            //float input = re_packed_input[chan*l.w*l.h + (input_y*l.w + input_x) * 32 + c_pack];
+                            //float weight = l.weights[fil*l.c*l.size*l.size + chan*l.size*l.size + (f_y*l.size + f_x) * 32 + c_pack];
+                            //uint32_t bit1 = input > 0;
+                            //uint32_t bit2 = weight > 0;
+                            //uint32_t count = (~(bit1 ^ bit2)) & 1;
+                            //float result = (2 * (float)count - 1) * mean_val;
+                            //printf("\n mul = %f, bit1 = %d, bit2 = %d, count = %d, mean = %f, result = %f  ", input*weight, bit1, bit2, count, mean_val, result);
+                            //sum += result;
+
+                            uint32_t input = ((uint32_t *)packed_input)[chan*w*h + input_y*w + input_x];
+                            //uint32_t weight = ((uint32_t *)l.align_bit_weights)[fil*l.c*l.size*l.size/32 + chan*l.size*l.size + f_y*l.size + f_x];
+                            uint32_t weight = ((uint32_t *)packed_weights)[fil*new_lda / 32 + chan*size*size + f_y*size + f_x];
+
+                            uint32_t xnor_result = ~(input ^ weight);
+                            int32_t count = popcnt_32(xnor_result); // mandatory Signed int
+                            sum += (2 * count - 32) * mean_val;
+                        }
+                    }
+                    // l.output[filters][width][height] +=
+                    //        state.input[channels][width][height] *
+                    //        l.weights[filters][channels][filter_width][filter_height];
+                    output[output_index] += sum;
+                }
+    }
+}
+
 // -------------- blas.c --------------
 
 
@@ -480,6 +700,64 @@ void gemm_nn(int M, int N, int K, float ALPHA,
     }
 }
 
+void gemm_nn_bin_32bit_packed(int M, int N, int K, float ALPHA,
+    uint32_t *A, int lda,
+    uint32_t *B, int ldb,
+    float *C, int ldc, float *mean_arr)
+{
+    int i;
+    #pragma omp parallel for
+    for (i = 0; i < M; ++i) {   // l.n
+        int j, s;
+        float mean_val = mean_arr[i];
+        for (s = 0; s < K; ++s) // l.size*l.size*l.c/32  or (l.size*l.size*l.c)
+        {
+            register uint32_t A_PART = A[i*lda + s];
+            __m256i a256 = _mm256_set1_epi32(A_PART);
+
+            for (j = 0; j < N - 8; j += 8)
+            {
+                __m256i b256 = *((__m256i*)&B[s*ldb + j]);
+                __m256i xor256 = _mm256_xor_si256(a256, b256);  // xnor = xor(a,b)
+                __m256i all_1 = _mm256_set1_epi8(255);
+                __m256i xnor256 = _mm256_andnot_si256(xor256, all_1); // xnor = not(xor(a,b))
+
+                // waiting for - CPUID Flags: AVX512VPOPCNTDQ: __m512i _mm512_popcnt_epi32(__m512i a)
+                __m256 count = _mm256_setr_ps(
+                    popcnt_32(_mm256_extract_epi32(xnor256, 0)),
+                    popcnt_32(_mm256_extract_epi32(xnor256, 1)),
+                    popcnt_32(_mm256_extract_epi32(xnor256, 2)),
+                    popcnt_32(_mm256_extract_epi32(xnor256, 3)),
+                    popcnt_32(_mm256_extract_epi32(xnor256, 4)),
+                    popcnt_32(_mm256_extract_epi32(xnor256, 5)),
+                    popcnt_32(_mm256_extract_epi32(xnor256, 6)),
+                    popcnt_32(_mm256_extract_epi32(xnor256, 7)));
+
+                __m256 val2 = _mm256_set1_ps(2);
+                count = _mm256_mul_ps(count, val2);     // count * 2
+
+                __m256 val32 = _mm256_set1_ps(32);
+                count = _mm256_sub_ps(count, val32);    // count - 32
+
+                __m256 mean256 = _mm256_set1_ps(mean_val);
+                count = _mm256_mul_ps(count, mean256);  // count * mean_val
+
+                __m256 c256 = *((__m256*)&C[i*ldc + j]);
+                count = _mm256_add_ps(count, c256);     // c = c + count
+                *((__m256*)&C[i*ldc + j]) = count;
+            }
+
+            for (; j < N; ++j) // out_h*out_w;
+            {
+                register uint32_t B_PART = B[s*ldb + j];
+                uint32_t xnor_result = ~(A_PART ^ B_PART);
+                int32_t count = popcnt_32(xnor_result);  // must be Signed int
+
+                C[i*ldc + j] += (2 * count - 32) * mean_val;
+            }
+        }
+    }
+}
 
 #if defined(_MSC_VER) && _MSC_VER <= 1900
 static inline __int32 _mm256_extract_epi64(__m256i a, const int index) {
@@ -1007,6 +1285,31 @@ void gemm_nn(int M, int N, int K, float ALPHA,
     }
 }
 
+
+void gemm_nn_bin_32bit_packed(int M, int N, int K, float ALPHA,
+    uint32_t *A, int lda,
+    uint32_t *B, int ldb,
+    float *C, int ldc, float *mean_arr)
+{
+    int i;
+    #pragma omp parallel for
+    for (i = 0; i < M; ++i) {   // l.n
+        int j, s;
+        float mean_val = mean_arr[i];
+        for (s = 0; s < K; ++s) // l.size*l.size*l.c/32  or (l.size*l.size*l.c)
+        {
+            register uint32_t A_PART = A[i*lda + s];
+            for (j = 0; j < N; ++j) // out_h*out_w;
+            {
+                register uint32_t B_PART = B[s*ldb + j];
+                uint32_t xnor_result = ~(A_PART ^ B_PART);
+                int32_t count = popcnt_32(xnor_result);  // must be Signed int
+
+                C[i*ldc + j] += (2 * count - 32) * mean_val;
+            }
+        }
+    }
+}
 
 //From Berkeley Vision's Caffe!
 //https://github.com/BVLC/caffe/blob/master/LICENSE
@@ -1764,6 +2067,10 @@ void free_network(network net)
     if (gpu_index >= 0) cuda_free(net.workspace);
     else free(net.workspace);
     if (net.input_state_gpu) cuda_free(net.input_state_gpu);
+    if (net.input_pinned_cpu) {   // CPU
+        if (net.input_pinned_cpu_flag) cudaFreeHost(net.input_pinned_cpu);
+        else free(net.input_pinned_cpu);
+    }
     if (*net.input_gpu) cuda_free(*net.input_gpu);
     if (*net.truth_gpu) cuda_free(*net.truth_gpu);
     if (net.input_gpu) free(net.input_gpu);
@@ -1899,6 +2206,12 @@ void free_layer(layer l)
     if (l.mean_arr)           free(l.mean_arr);
     //if (l.weight_updates)     free(l.weight_updates);
     //if (l.delta)              free(l.delta);
+#ifdef GPU
+    if (l.output && l.output_pinned) {
+        cudaFreeHost(l.output);
+        l.output = NULL;
+    }
+#endif
     if (l.output)             free(l.output);
     if (l.squared)            free(l.squared);
     if (l.norms)              free(l.norms);
@@ -2206,6 +2519,13 @@ layer make_yolo_layer(int batch, int w, int h, int n, int total, int *mask, int 
 
 #ifdef GPU
     l.output_gpu = cuda_make_array(l.output, batch*l.outputs);
+
+    free(l.output);
+    if (cudaSuccess == cudaHostAlloc(&l.output, batch*l.outputs * sizeof(float), cudaHostRegisterMapped)) l.output_pinned = 1;
+    else {
+        cudaGetLastError(); // reset CUDA-error
+        l.output = calloc(batch*l.outputs, sizeof(float));
+    }
 #endif
 
     fprintf(stderr, "yolo\n");
@@ -2367,7 +2687,12 @@ size_t get_workspace_size(layer l) {
         return most;
     }
 #endif
-    if (l.xnor) return (size_t)l.bit_align*l.size*l.size*l.c * sizeof(float);
+    if (l.xnor) {
+        size_t re_packed_input_size = l.c * l.w * l.h * sizeof(float);
+        size_t workspace_size = (size_t)l.bit_align*l.size*l.size*l.c * sizeof(float);
+        if (workspace_size < re_packed_input_size) workspace_size = re_packed_input_size;
+        return workspace_size;
+    }
     return (size_t)l.out_h*l.out_w*l.size*l.size*l.c * sizeof(float);
 }
 
@@ -2442,6 +2767,18 @@ convolutional_layer make_convolutional_layer(int batch, int h, int w, int c, int
         int align = 32;// 8;
         int src_align = l.out_h*l.out_w;
         l.bit_align = src_align + (align - src_align % align);
+
+        l.mean_arr = calloc(l.n, sizeof(float));
+
+        const size_t new_c = l.c / 32;
+        size_t in_re_packed_input_size = new_c * l.w * l.h + 1;
+        l.bin_re_packed_input = calloc(in_re_packed_input_size, sizeof(uint32_t));
+
+        l.lda_align = 256;  // AVX2
+        int k = l.size*l.size*l.c;
+        size_t k_aligned = k + (l.lda_align - k%l.lda_align);
+        size_t t_bit_input_size = k_aligned * l.bit_align / 8;
+        l.t_bit_input = calloc(t_bit_input_size, sizeof(char));
     }
 
     if (batch_normalize) {
@@ -2497,6 +2834,7 @@ convolutional_layer make_convolutional_layer(int batch, int h, int w, int c, int
         //}
         if (xnor) {
             l.binary_weights_gpu = cuda_make_array(l.weights, c*n*size*size);
+            l.mean_arr_gpu = cuda_make_array(0, l.n);
             l.binary_input_gpu = cuda_make_array(0, l.inputs*l.batch);
         }
 
@@ -3709,6 +4047,12 @@ network parse_network_cfg(char *filename, int batch, int quantized)
             net.workspace = cuda_make_array(0, (workspace_size - 1) / sizeof(float) + 1);
             int size = net.layers[0].inputs * net.batch;    //get_network_input_size(net) * net.batch;
             net.input_state_gpu = cuda_make_array(0, size);
+
+            if (cudaSuccess == cudaHostAlloc(&net.input_pinned_cpu, size * sizeof(float), cudaHostRegisterMapped)) net.input_pinned_cpu_flag = 1;
+            else {
+                cudaGetLastError(); // reset CUDA-error
+                net.input_pinned_cpu = calloc(size, sizeof(float));
+            }
         }
         else {
             net.workspace = calloc(1, workspace_size);

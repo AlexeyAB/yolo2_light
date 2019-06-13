@@ -2,12 +2,37 @@
 #ifndef GPU_H
 #define GPU_H
 
+#ifndef __DATE__
+#define __DATE__
+#endif
+
+#ifndef __TIME__
+#define __TIME__
+#endif
+
+#ifndef __FUNCTION__
+#define __FUNCTION__
+#endif
+
+#ifndef __LINE__
+#define __LINE__ 0
+#endif
+
+#ifndef __FILE__
+#define __FILE__
+#endif
+
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 
 #ifdef GPU
+
+    void check_error(cudaError_t status);
+    void check_error_extended(cudaError_t status, const char *file, int line, const char *date_time);
+#define CHECK_CUDA(X) check_error_extended(X, __FILE__ " : " __FUNCTION__, __LINE__,  __DATE__ " - " __TIME__ );
 
     struct layer;
     typedef struct layer layer;
@@ -27,6 +52,9 @@ extern "C" {
 
 #ifdef CUDNN
     cudnnHandle_t cudnn_handle();
+
+    void cudnn_check_error_extended(cudnnStatus_t status, const char *file, int line, const char *date_time);
+#define CHECK_CUDNN(X) cudnn_check_error_extended(X, __FILE__ " : " __FUNCTION__, __LINE__,  __DATE__ " - " __TIME__ );
 #endif
 
     float *cuda_make_array(float *x, size_t n);
@@ -71,11 +99,11 @@ extern "C" {
 
     // reorg layer
     void reorg_ongpu(float *x, int w, int h, int c, int batch, int stride, int forward, float *out);
-    
+
     // upsample layer
     void upsample_gpu(float *in, int w, int h, int c, int batch, int stride, int forward, float scale, float *out);
 
-    void shortcut_gpu(int batch, int w1, int h1, int c1, float *add, int w2, int h2, int c2, float *out);
+    void input_shortcut_gpu(float *in, int batch, int w1, int h1, int c1, float *add, int w2, int h2, int c2, float *out);
     // -------------------- Quantinization -------------------
 
     void cuda_convert_f32_to_int8(float* input_f32, size_t size, int8_t *output_int8, float multipler, int max_val);
@@ -85,6 +113,43 @@ extern "C" {
     void cuda_convert_int8_to_f32(int8_t* input_int8, size_t size, float *output_f32, float multipler);
 
     void cuda_do_multiply_f32(float *input_output, size_t size, float multipler);
+
+    // -------------------- XNOR -------------------
+
+    void swap_binary(convolutional_layer *l);
+
+    void binarize_weights_gpu(float *weights, int n, int size, float *binary);
+
+    void binarize_gpu(float *x, int n, float *binary);
+
+    void repack_input_gpu_bin(float *input, uint32_t *re_packed_input_bin, int w, int h, int c);
+
+    void transpose_uint32_gpu(uint32_t *src, uint32_t *dst, int src_h, int src_w, int src_align, int dst_align);
+
+    void im2col_ongpu(float *im,
+        int channels, int height, int width,
+        int ksize, int stride, int pad, float *data_col);
+
+    void im2col_align_ongpu(float *im,
+        int channels, int height, int width,
+        int ksize, int stride, int pad, float *data_col, int bit_align);
+
+    void im2col_align_bin_ongpu(float *im,
+        int channels, int height, int width,
+        int ksize, int stride, int pad, float *data_col, int bit_align);
+
+    void float_to_bit_gpu(float *src, unsigned char *dst, size_t size);
+
+    void transpose_bin_gpu(unsigned char *A, unsigned char *B, const int n, const int m,
+        const int lda, const int ldb, const int block_size);
+
+    void fill_int8_gpu(unsigned char *src, unsigned char val, size_t size);
+
+    void gemm_nn_custom_bin_mean_transposed_gpu(int M, int N, int K,
+        unsigned char *A, int lda,
+        unsigned char *B, int ldb,
+        float *C, int ldc, float *mean_arr, float *bias, int leaky_activation,
+        float *shortcut_in_gpu, float *shortcut_out_gpu);
 
 #endif // GPU
 

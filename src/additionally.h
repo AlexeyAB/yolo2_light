@@ -66,7 +66,7 @@ extern "C" {
     // --------------  activations.h --------------
 
     typedef enum {
-        LOGISTIC, RELU, RELIE, LINEAR, RAMP, TANH, PLSE, LEAKY, ELU, LOGGY, STAIR, HARDTAN, LHTAN
+        LOGISTIC, RELU, RELIE, LINEAR, RAMP, TANH, PLSE, LEAKY, ELU, LOGGY, STAIR, HARDTAN, LHTAN, SELU
     }ACTIVATION;
 
     static inline float stair_activate(float x)
@@ -186,44 +186,7 @@ extern "C" {
 
     // -------------- XNOR-net GPU ------------
 
-#ifdef GPU
-    void swap_binary(convolutional_layer *l);
-
-    void binarize_weights_gpu(float *weights, int n, int size, float *binary);
-
-    void binarize_gpu(float *x, int n, float *binary);
-
-    void im2col_align_ongpu(float *im,
-        int channels, int height, int width,
-        int ksize, int stride, int pad, float *data_col, int bit_align);
-
-    void im2col_align_bin_ongpu(float *im,
-        int channels, int height, int width,
-        int ksize, int stride, int pad, float *data_col, int bit_align);
-
-    void float_to_bit_gpu(float *src, unsigned char *dst, size_t size);
-
-    void transpose_bin_gpu(unsigned char *A, unsigned char *B, const int n, const int m,
-        const int lda, const int ldb, const int block_size);
-
-    void fill_int8_gpu(unsigned char *src, unsigned char val, size_t size);
-
-    //void gemm_nn_custom_bin_mean_transposed_gpu(int M, int N, int K,
-    //    unsigned char *A, int lda,
-    //    unsigned char *B, int ldb,
-    //    float *C, int ldc, float *mean_arr);
-
-    void gemm_nn_custom_bin_mean_transposed_gpu(int M, int N, int K,
-        unsigned char *A, int lda,
-        unsigned char *B, int ldb,
-        float *C, int ldc, float *mean_arr, float *bias);
-
-    void gemm_nn_custom_bin_mean_transposed_sequentially_gpu(int M, int N, int K,
-        unsigned char *A, int lda,
-        unsigned char *B, int ldb,
-        float *C, int ldc, float *mean_arr);
-
-#endif // GPU
+    // in gpu.h
 
     // -------------- blas.h --------------
 
@@ -236,6 +199,29 @@ extern "C" {
 
     void transpose_bin(uint32_t *A, uint32_t *B, const int n, const int m,
         const int lda, const int ldb, const int block_size);
+
+    // 32 channels -> 1 channel (with 32 floats)
+    // 256 channels -> 8 channels (with 32 floats)
+    void repack_input(float *input, float *re_packed_input, int w, int h, int c);
+
+    // transpose uint32_t matrix
+    void transpose_uint32(uint32_t *src, uint32_t *dst, int src_h, int src_w, int src_align, int dst_align);
+
+    // convolution repacked bit matrix (32 channels -> 1 uint32_t) XNOR-net
+    void convolution_repacked(uint32_t *packed_input, uint32_t *packed_weights, float *output,
+        int w, int h, int c, int n, int size, int pad, int new_lda, float *mean_arr);
+
+    // AVX2
+    void gemm_nn_bin_32bit_packed(int M, int N, int K, float ALPHA,
+        uint32_t *A, int lda,
+        uint32_t *B, int ldb,
+        float *C, int ldc, float *mean_arr);
+
+    // AVX2
+    void gemm_nn_bin_transposed_32bit_packed(int M, int N, int K, float ALPHA,
+        uint32_t *A, int lda,
+        uint32_t *B, int ldb,
+        float *C, int ldc, float *mean_arr);
 
     // AVX2
     void im2col_cpu_custom(float* data_im,
@@ -565,6 +551,7 @@ extern "C" {
         int   * input_sizes;
         //float * delta;
         float * output;
+        int output_pinned;
         //float *output_multipler;
         float output_multipler;
         int8_t * output_int8;
@@ -609,6 +596,8 @@ extern "C" {
         float *h_cpu;
 
         float *binary_input;
+        uint32_t *bin_re_packed_input;
+        char *t_bit_input;
 
         size_t workspace_size;
 
@@ -632,6 +621,8 @@ extern "C" {
 
         float *binary_input_gpu;
         float *binary_weights_gpu;
+        float *bin_conv_shortcut_in_gpu;
+        float *bin_conv_shortcut_out_gpu;
 
         float * mean_gpu;
         float * variance_gpu;
@@ -759,6 +750,8 @@ extern "C" {
 
 #ifdef GPU
         float *input_state_gpu;
+        float *input_pinned_cpu;
+        int input_pinned_cpu_flag;
 
         float **input_gpu;
         float **truth_gpu;

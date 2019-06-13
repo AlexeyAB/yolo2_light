@@ -16,16 +16,16 @@ How to compile:
 
 How to start:
 * Download [`yolov3.weights`](https://pjreddie.com/media/files/yolov3.weights) to the `bin` directory and run `./yolo.sh` on Linux (or `yolo_cpu.cmd` / `yolo_gpu.cmd` on Windows)
-* Download [`yolov3-tiny.cfg`](https://pjreddie.com/media/files/yolov3-tiny.weights) to the `bin` directory and run `./tiny-yolo.sh`
+* Download [`yolov3-tiny.weights`](https://pjreddie.com/media/files/yolov3-tiny.weights) to the `bin` directory and run `./tiny-yolo.sh`
 
 How to use **INT8**-inference:
 * Use flag `-quantized` at the end of command, for example, [`tiny-yolo-int8.sh`](https://github.com/AlexeyAB/yolo2_light/blob/master/bin/tiny-yolo-int8.sh) or [`yolo_cpu_int8.cmd`](https://github.com/AlexeyAB/yolo2_light/blob/master/bin/yolo_cpu_int8.cmd)
 * For the custom dataset, you should use `input_calibration=` parameter in your cfg-file, from the correspon cfg-file: [`yolov3-tiny.cfg`](https://github.com/AlexeyAB/yolo2_light/blob/29905072f194ee86fdeed6ff2d12fed818712411/bin/yolov3-tiny.cfg#L25) or [`yolov3.cfg`](https://github.com/AlexeyAB/yolo2_light/blob/29905072f194ee86fdeed6ff2d12fed818712411/bin/yolov3.cfg#L25), ...
 
 How to use **BIT1-XNOR**-inference - only for custom models (you should train it by yourself):
-* You should base your cfg-file on [`tiny-yolo-obj_xnor.cfg`](https://github.com/AlexeyAB/yolo2_light/blob/master/bin/tiny-yolo-obj_xnor.cfg) and train it by using this repository as usual https://github.com/AlexeyAB/darknet
+* You should base your cfg-file on [`yolov3-spp_xnor_obj.cfg`](https://github.com/AlexeyAB/darknet/files/2853459/yolov3-spp_xnor_obj.cfg.txt) and train it by using this repository as usual https://github.com/AlexeyAB/darknet by using pre-trained file [`darknet53_448_xnor.conv.74`](https://drive.google.com/open?id=1IT-vvyxRLlxY5g9rJp_G2U3TXYphjBv8)
 * Then use it for Detection-test or for getting Accuracy (mAP):
-    * `./darknet detector test data/obj.names tiny-yolo-obj_xnor.cfg data/tiny-yolo-obj_xnor_5000.weights -thresh 0.15 dog.jpg`
-	* `./darknet detector map data/obj.data tiny-yolo-obj_xnor.cfg data/tiny-yolo-obj_xnor_5000.weights -thresh 0.15`
+    * `./darknet detector test data/obj.names yolov3-spp_xnor_obj.cfg data/yolov3-spp_xnor_obj_5000.weights -thresh 0.15 dog.jpg`
+	* `./darknet detector map data/obj.data yolov3-spp_xnor_obj.cfg data/yolov3-spp_xnor_obj_5000.weights -thresh 0.15`
 
 Other models by the link: https://pjreddie.com/darknet/yolo/
