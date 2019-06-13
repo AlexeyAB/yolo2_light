@@ -1215,7 +1215,7 @@ void gemm_nn_custom_bin_mean_transposed(int M, int N, int K, float ALPHA_UNUSED,
                 __m256i xor256 = _mm256_xor_si256(a_bit256, b_bit256);  // xnor = not(xor(a,b))
                 __m256i c_bit256 = _mm256_andnot_si256(xor256, all_1);  // can be optimized - we can do other NOT for wegihts once and do not do this NOT
 
-                count_sum = _mm256_add_epi64(count256(c_bit256), count_sum);    //  Mula’s algorithm
+                count_sum = _mm256_add_epi64(count256(c_bit256), count_sum);    //  Mulaï¿½s algorithm
 
                                                                                 //count += popcnt256(c_bit256);
 
@@ -2213,6 +2213,7 @@ void free_layer(layer l)
     }
 #endif
     if (l.output)             free(l.output);
+    if (l.output_int8)        free(l.output_int8);
     if (l.squared)            free(l.squared);
     if (l.norms)              free(l.norms);
     if (l.spatial_mean)       free(l.spatial_mean);
@@ -2230,6 +2231,7 @@ void free_layer(layer l)
     if (l.r_cpu)              free(l.r_cpu);
     if (l.h_cpu)              free(l.h_cpu);
     if (l.binary_input)       free(l.binary_input);
+    if (l.mask)               free(l.mask);
 
 #ifdef GPU
     if (l.indexes_gpu)           cuda_free((float *)l.indexes_gpu);
@@ -2278,6 +2280,15 @@ void free_layer(layer l)
     if (l.rand_gpu)                cuda_free(l.rand_gpu);
     if (l.squared_gpu)             cuda_free(l.squared_gpu);
     if (l.norms_gpu)               cuda_free(l.norms_gpu);
+#endif
+#ifdef CUDNN
+    cudnnDestroyTensorDescriptor(l.biasTensorDesc);
+    cudnnDestroyActivationDescriptor(l.activationDesc);
+    cudnnDestroyTensorDescriptor(l.srcTensorDesc);
+    cudnnDestroyTensorDescriptor(l.dstTensorDesc);
+    cudnnDestroyFilterDescriptor(l.weightDesc);
+    cudnnDestroyConvolutionDescriptor(l.convDesc);
+    cudnnDestroyPoolingDescriptor(l.poolingDesc);
 #endif
 }
 
