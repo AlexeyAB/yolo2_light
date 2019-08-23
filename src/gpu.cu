@@ -25,6 +25,15 @@ __device__ inline T1 __shfl_custom(T1 val, T2 lane) {
 #endif
 }
 
+template<typename T1, typename T2>
+__device__ inline T1 __shfl_down_custom(T1 val, T2 lane) {
+#if CUDART_VERSION >= 9000
+    return __shfl_down_sync(FULL_MASK, val, lane);
+#else
+    return __shfl_down(val, lane);
+#endif
+}
+
 template<typename T>
 __device__ inline uint32_t __ballot_custom(T val) {
 #if CUDART_VERSION >= 9000
@@ -956,14 +965,14 @@ __global__ void im2col_align_bin_gpu_kernel(const int n, const float* data_im,
                 {
                     const int lane_id = threadIdx.x % WARP_SIZE;
 
-                    const int cur_wh_index = __shfl(send_wh_index, t) + lane_id;
+                    const int cur_wh_index = __shfl_custom(send_wh_index, t) + lane_id;
 
                     if (cur_wh_index < (width_col*height_col))// && (cur_i_pad+pad) < ksize)
                     {
-                        const int cur_pre_out_index = __shfl(pre_out_index, t);
+                        const int cur_pre_out_index = __shfl_custom(pre_out_index, t);
 
-                        const int cur_pre_in_index = __shfl(pre_in_index, t);
-                        const int cur_pre_in_wh_index = __shfl(pre_in_wh_index, t) + lane_id;
+                        const int cur_pre_in_index = __shfl_custom(pre_in_index, t);
+                        const int cur_pre_in_wh_index = __shfl_custom(pre_in_wh_index, t) + lane_id;
 
                         int w = cur_pre_in_wh_index % width;
                         int h = cur_pre_in_wh_index / width;
@@ -977,7 +986,7 @@ __global__ void im2col_align_bin_gpu_kernel(const int n, const float* data_im,
                         //data_col[out_index] = val;
                         //tmp_s[0] = val;
 
-                        uint32_t bit_mask = __ballot(val > 0);
+                        uint32_t bit_mask = __ballot_custom(val > 0);
                         if (lane_id == 0) {
                             uint8_t *bit8_ptr = &(((uint8_t *)data_col)[out_index / 8]);
                             uint32_t *bit32_ptr = (uint32_t *)bit8_ptr;
@@ -1028,8 +1037,7 @@ __global__ void float_to_bit_gpu_kernel(float *src, unsigned char *dst, size_t s
         //src_val = src[index];
         if (index < size) src_val = src[index];
         else src_val = 0;
-        //unsigned int bit_mask = __ballot_sync(0xffffffff, src_val > 0);
-        unsigned int bit_mask = __ballot(src_val > 0);
+        unsigned int bit_mask = __ballot_custom(src_val > 0);
         if (threadIdx.x % WARP_SIZE == 0) ((unsigned int*)dst)[index / 32] = bit_mask;
     }
 }
@@ -1417,7 +1425,7 @@ __global__ void gemm_nn_custom_bin_mean_transposed_sequentially_gpu_kernel(int M
                 }
 
                 for (int offset = WARP_SIZE / 2; offset > 0; offset /= 2)
-                    count += __shfl_down(count, offset);
+                    count += __shfl_down_custom(count, offset);
 
 
                 if (threadIdx.x % WARP_SIZE == 0) {
